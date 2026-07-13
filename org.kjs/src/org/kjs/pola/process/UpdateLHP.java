@@ -1,10 +1,14 @@
 package org.kjs.pola.process;
 
-import org.compiere.process.*;
-import org.compiere.model.*;
-import org.compiere.util.*;
-import java.util.logging.*;
-import java.sql.*;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.logging.Level;
+
+import org.compiere.model.MProduction;
+import org.compiere.process.SvrProcess;
+import org.compiere.util.DB;
 
 public class UpdateLHP extends SvrProcess
 {

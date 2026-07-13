@@ -1,9 +1,19 @@
 package org.kjs.pola.process;
 
-import java.util.logging.*;
-import org.compiere.process.*;
-import org.compiere.util.*;
-import org.compiere.model.*;
+import java.util.logging.Level;
+
+import org.compiere.model.MInOut;
+import org.compiere.model.MInOutLine;
+import org.compiere.model.MLocator;
+import org.compiere.model.MOrder;
+import org.compiere.model.MOrderLine;
+import org.compiere.model.MProduct;
+import org.compiere.model.MProduction;
+import org.compiere.model.MProductionLine;
+import org.compiere.process.ProcessInfoParameter;
+import org.compiere.process.SvrProcess;
+import org.compiere.util.DB;
+import org.compiere.util.Env;
 
 public class PostingConsignment extends SvrProcess
 {
