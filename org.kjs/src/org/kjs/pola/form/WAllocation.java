@@ -30,7 +30,7 @@ import org.adempiere.webui.event.WTableModelListener;
 import org.adempiere.webui.panel.ADForm;
 import org.adempiere.webui.panel.CustomForm;
 import org.adempiere.webui.panel.IFormController;
-import org.adempiere.webui.window.FDialog;
+import org.adempiere.webui.window.Dialog;
 import org.compiere.minigrid.IMiniTable;
 import org.compiere.model.Lookup;
 import org.compiere.model.MAllocationHdr;
@@ -364,7 +364,7 @@ public class WAllocation extends Allocation implements IFormController, EventLis
         final ListModelTable model = isInvoice ? this.invoiceTable.getModel() : this.paymentTable.getModel();
         model.updateComponent(row);
         if (msg != null && msg.length() > 0) {
-            FDialog.warn(this.form.getWindowNo(), "AllocationWriteOffWarn");
+            Dialog.warn(this.form.getWindowNo(), "AllocationWriteOffWarn");
         }
         this.calculate();
     }
@@ -470,7 +470,7 @@ public class WAllocation extends Allocation implements IFormController, EventLis
             return allocation[0];
         }
         catch (Exception e) {
-            FDialog.error(this.form.getWindowNo(), (Component)this.form, "Error", e.getLocalizedMessage());
+            Dialog.error(this.form.getWindowNo(), "Error", e.getLocalizedMessage());
             return null;
         }
     }
