@@ -795,6 +795,20 @@ public class MProductionExt extends MProduction
         else if (!this.isUseProductionPlan()) {
             this.setIsUseProductionPlan(true);
         }
+        
+        // Compare Qty Producttion
+        if(get_ValueAsInt("KJS_ProductionPlanLine_ID") > 0) {
+	        String sql1 =" SELECT coalesce(SUM(ProductionQty),0) FROM M_Production WHERE KJS_ProductionPlanLine_ID = " + get_ValueAsInt("KJS_ProductionPlanLine_ID") +
+	        			 " AND DocStatus NOT IN ('VO', 'RE') AND M_Production_ID != ? ";
+	        BigDecimal QtyLHP = DB.getSQLValueBD(get_TrxName(), sql1, getM_Production_ID());
+	        
+	        String sql2 = " SELECT coalesce(ProductionQty,0) FROM KJS_ProductionPlanLine WHERE KJS_ProductionPlanLine_ID = ?"; 
+	        BigDecimal QtyJob = DB.getSQLValueBD(get_TrxName(), sql2, get_ValueAsInt("KJS_ProductionPlanLine_ID"));
+	        
+	        BigDecimal qty_allow = QtyJob.add(QtyJob.multiply(BigDecimal.valueOf(0.1)));
+	        if((QtyLHP.add(getProductionQty())).compareTo(qty_allow) > 0)
+	        	throw new AdempiereException("Total Qty Produksi LHP telah melebihi Qty Production JOB Phase (+ 10%)");
+        }
         return true;
     }
 }

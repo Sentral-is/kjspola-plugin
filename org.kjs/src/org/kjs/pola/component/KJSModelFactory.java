@@ -15,6 +15,8 @@ import org.kjs.pola.model.MPaymentExt;
 import org.kjs.pola.model.MProductExt;
 import org.kjs.pola.model.MProductionExt;
 import org.kjs.pola.model.MProductionPlanKJS;
+import org.kjs.pola.model.MProductionPlanLineBOMKJS;
+import org.kjs.pola.model.MProductionPlanLineKJS;
 import org.kjs.pola.model.X_C_ARProInv;
 import org.kjs.pola.model.X_C_ARProInvLine;
 import org.kjs.pola.model.X_C_Contract;
@@ -56,10 +58,10 @@ public class KJSModelFactory implements IModelFactory
             return MProductionPlanKJS.class;
         }
         if (tableName.equals("KJS_ProductionPlanLine")) {
-            return X_KJS_ProductionPlanLine.class;
+            return MProductionPlanLineKJS.class;
         }
         if (tableName.equals("KJS_ProductionPlanLineBOM")) {
-            return X_KJS_ProductionPlanLineBOM.class;
+            return MProductionPlanLineBOMKJS.class;
         }
         if (tableName.equals("KJS_ProductionPlanLink")) {
             return X_KJS_ProductionPlanLink.class;

@@ -1,11 +1,26 @@
 package org.kjs.pola.model;
 
 import java.math.BigDecimal;
+import java.awt.Dialog;
 import java.io.File;
+import java.lang.ProcessHandle.Info;
+
 import org.compiere.util.DB;
+import org.compiere.util.Util;
 import org.compiere.process.DocumentEngine;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.util.Date;
+import java.util.List;
 import java.util.Properties;
+
+import org.adempiere.webui.window.FDialog;
+import org.compiere.model.MMovement;
+import org.compiere.model.MMovementLine;
+import org.compiere.model.MOrderLine;
+import org.compiere.model.ModelValidationEngine;
+import org.compiere.model.ModelValidator;
+import org.compiere.model.Query;
 import org.compiere.process.DocAction;
 
 public class MProductionPlanKJS extends X_KJS_ProductionPlan implements DocAction
@@ -54,12 +69,62 @@ public class MProductionPlanKJS extends X_KJS_ProductionPlan implements DocActio
     }
     
     public String completeIt() {
+    	m_processMsg = ModelValidationEngine.get().fireDocValidate(this, ModelValidator.TIMING_BEFORE_COMPLETE);
+		if (m_processMsg != null)
+			return DocAction.STATUS_Invalid;
         final String set = "UPDATE KJS_ProductionPlanLine SET Processed='Y' WHERE KJS_ProductionPlan_ID=?";
         DB.executeUpdate(set, this.getKJS_ProductionPlan_ID(), this.get_TrxName());
-        this.setProcessed(true);
-        this.setDocAction("CL");
-        return "CO";
+        
+		String valid = ModelValidationEngine.get().fireDocValidate(this, ModelValidator.TIMING_AFTER_COMPLETE);
+		if (valid != null)
+			return DocAction.STATUS_Invalid;
+		
+		//Create Bon Produksi
+		MProductionPlanLineKJS[] lines = getLines(null, "");
+		for(MProductionPlanLineKJS line : lines) {
+			MMovement mov = new MMovement(getCtx(), 0, get_TrxName());
+			mov.setAD_Org_ID(getAD_Org_ID());
+			mov.setC_DocType_ID(1000522);
+			mov.setPOReference(line.getKJS_Phase().getName());
+			mov.setDescription(getDocumentNo());
+			mov.setMovementDate(new Timestamp(System.currentTimeMillis()));
+			
+			MProductionPlanLineBOMKJS[] boms = line.getLines(null, "");
+			for(MProductionPlanLineBOMKJS bom : boms) {
+
+				mov.saveEx(get_TrxName());
+				
+				MMovementLine ml = new MMovementLine(mov);
+				ml.setM_Product_ID(bom.getM_Product_ID());
+				ml.set_ValueNoCheck("KJS_ProductionPlan_ID", getKJS_ProductionPlan_ID());
+				ml.setM_Locator_ID(1000565);
+				ml.setM_LocatorTo_ID(1000566);
+				BigDecimal prodQty = (BigDecimal) line.get_Value("ProductionQty");
+				ml.setMovementQty(bom.getQty().multiply(prodQty));
+				ml.save(get_TrxName());
+			}
+		}
+		setProcessed(true);	
+		//
+		setDocAction(DOCACTION_Close);
+		return DocAction.STATUS_Completed;
     }
+    
+	public MProductionPlanLineKJS[] getLines (String whereClause, String orderClause)
+	{
+		StringBuilder whereClauseFinal = new StringBuilder(MProductionPlanLineKJS.COLUMNNAME_KJS_ProductionPlan_ID+"=? ");
+		if (!Util.isEmpty(whereClause, true))
+			whereClauseFinal.append(whereClause);
+		if (orderClause.length() == 0)
+			orderClause = MProductionPlanLineKJS.COLUMNNAME_Line;
+		//
+		List<MProductionPlanLineKJS> list = new Query(getCtx(), MProductionPlanLineKJS.Table_Name, whereClauseFinal.toString(), get_TrxName())
+										.setParameters(get_ID())
+										.setOrderBy(orderClause)
+										.list();
+		//
+		return list.toArray(new MProductionPlanLineKJS[list.size()]);		
+	}	//	getLines
     
     public boolean voidIt() {
         final String set = "UPDATE KJS_ProductionPlanLine SET Processed='Y' WHERE KJS_ProductionPlan_ID=?";
