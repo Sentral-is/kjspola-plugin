@@ -19,20 +19,18 @@
    </license>
 
    <requires>
-      <import plugin="org.adempiere.base" version="6.2.0" match="greaterOrEqual"/>
-      <import plugin="org.adempiere.plugin.utils" version="6.2.0" match="greaterOrEqual"/>
-      <import plugin="org.adempiere.ui" version="6.2.0" match="greaterOrEqual"/>
-      <import plugin="org.eclipse.osgi.services" version="3.7.100" match="greaterOrEqual"/>
-      <import plugin="org.adempiere.ui.zk" version="6.2.0" match="greaterOrEqual"/>
-      <import plugin="org.idempiere.zk.extra" version="6.2.0" match="greaterOrEqual"/>
-      <import plugin="zk" version="8.6.0" match="greaterOrEqual"/>
-      <import plugin="zul" version="8.6.0" match="greaterOrEqual"/>
-      <import plugin="com.itextpdf" version="5.5.13" match="greaterOrEqual"/>
-      <import plugin="org.apache.poi.poi-ooxml" version="3.15.0" match="greaterOrEqual"/>
+      <import plugin="org.adempiere.base" version="13.0.0" match="greaterOrEqual"/>
+      <import plugin="org.adempiere.plugin.utils" version="13.0.0" match="greaterOrEqual"/>
+      <import plugin="org.adempiere.ui" version="13.0.0" match="greaterOrEqual"/>
+      <import plugin="org.eclipse.osgi.services"/>
+      <import plugin="org.adempiere.ui.zk" version="13.0.0" match="greaterOrEqual"/>
+      <import plugin="org.idempiere.zk.extra" version="13.0.0" match="greaterOrEqual"/>
+      <import plugin="zk" version="10.3.0.1" match="greaterOrEqual"/>
+      <import plugin="zul" version="10.3.0.1" match="greaterOrEqual"/>
       <import plugin="org.apache.ant"/>
       <import plugin="org.eclipse.osgi"/>
       <import plugin="zcommon"/>
-      <import plugin="org.adempiere.base.callout" version="6.2.0" match="greaterOrEqual"/>
+      <import plugin="org.adempiere.base.callout" version="13.0.0" match="greaterOrEqual"/>
    </requires>
 
    <plugin
