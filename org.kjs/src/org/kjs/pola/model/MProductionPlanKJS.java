@@ -1,20 +1,12 @@
 package org.kjs.pola.model;
 
-import java.math.BigDecimal;
-import java.awt.Dialog;
 import java.io.File;
-import java.lang.ProcessHandle.Info;
-
-import org.compiere.util.DB;
-import org.compiere.util.Util;
-import org.compiere.process.DocumentEngine;
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
-import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 
-import org.adempiere.webui.window.FDialog;
 import org.compiere.model.MMovement;
 import org.compiere.model.MMovementLine;
 import org.compiere.model.MOrderLine;
