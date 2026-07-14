@@ -22,7 +22,6 @@
       <import plugin="org.adempiere.base" version="13.0.0" match="greaterOrEqual"/>
       <import plugin="org.adempiere.plugin.utils" version="13.0.0" match="greaterOrEqual"/>
       <import plugin="org.adempiere.ui" version="13.0.0" match="greaterOrEqual"/>
-      <import plugin="org.eclipse.osgi.services"/>
       <import plugin="org.adempiere.ui.zk" version="13.0.0" match="greaterOrEqual"/>
       <import plugin="org.idempiere.zk.extra" version="13.0.0" match="greaterOrEqual"/>
       <import plugin="zk" version="10.3.0.1" match="greaterOrEqual"/>
