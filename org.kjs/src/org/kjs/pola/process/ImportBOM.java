@@ -5,7 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.sql.Statement;
 import org.compiere.model.MProduct;
-import org.compiere.model.MProductBOM;
+import org.compiere.model.Query;
+import org.eevolution.model.MPPProductBOM;
+import org.eevolution.model.MPPProductBOMLine;
 import org.kjs.pola.model.X_I_Product_BOM;
 import org.compiere.model.PO;
 import org.compiere.model.ModelValidationEngine;
@@ -70,14 +72,25 @@ public class ImportBOM extends SvrProcess implements ImportProcess
                 final X_I_Product_BOM imp = new X_I_Product_BOM(this.getCtx(), rs, this.get_TrxName());
                 final int I_Product_BOM_ID = imp.getI_Product_BOM_ID();
                 final int M_Product_ID = imp.getM_Product_ID();
-                final MProductBOM bom = new MProductBOM(this.getCtx(), rs, this.get_TrxName());
                 final MProduct prod = new MProduct(this.getCtx(), M_Product_ID, this.get_TrxName());
-                bom.setM_Product_ID(imp.getM_Product_ID());
+                MPPProductBOM header = new Query(this.getCtx(), MPPProductBOM.Table_Name, "M_Product_ID=?", this.get_TrxName())
+                        .setParameters(M_Product_ID)
+                        .setClient_ID()
+                        .first();
+                if (header == null) {
+                    header = new MPPProductBOM(this.getCtx(), 0, this.get_TrxName());
+                    header.setAD_Org_ID(imp.getAD_Org_ID());
+                    header.setM_Product_ID(M_Product_ID);
+                    header.setValue(prod.getValue());
+                    header.setName(prod.getName());
+                    header.saveEx(this.get_TrxName());
+                }
+                final MPPProductBOMLine bom = new MPPProductBOMLine(header);
+                bom.setM_Product_ID(imp.getM_ProductBOM_ID());
                 bom.setLine(imp.getLine());
                 bom.setDescription(imp.getDescription());
-                bom.setBOMType(imp.getBOMType());
-                bom.setM_ProductBOM_ID(imp.getM_ProductBOM_ID());
-                bom.setBOMQty(imp.getBOMQty());
+                bom.setComponentType(imp.getBOMType());
+                bom.setQtyBOM(imp.getBOMQty());
                 bom.setAD_Org_ID(imp.getAD_Org_ID());
                 bom.set_ValueNoCheck("CreatedBy", (Object)imp.getCreatedBy());
                 bom.set_ValueNoCheck("UpdatedBy", (Object)imp.getUpdatedBy());

@@ -103,7 +103,7 @@ public class MPaymentExt extends MPayment implements DocAction, ProcessCall, Pay
         return "IP";
     }
     
-    private boolean verifyDocType(final MPaymentAllocate[] pAllocs) {
+    protected boolean verifyDocType(final MPaymentAllocate[] pAllocs) {
         if (this.getC_DocType_ID() == 0) {
             return false;
         }
@@ -229,11 +229,11 @@ public class MPaymentExt extends MPayment implements DocAction, ProcessCall, Pay
         return documentSO == null || documentSO == (boolean)paymentSO;
     }
     
-    private boolean verifyPaymentAllocateVsHeader(final MPaymentAllocate[] pAllocs) {
+    protected boolean verifyPaymentAllocateVsHeader(final MPaymentAllocate[] pAllocs) {
         return pAllocs.length <= 0 || (this.getC_Charge_ID() <= 0 && this.getC_Invoice_ID() <= 0 && this.getC_Order_ID() <= 0);
     }
     
-    private boolean verifyPaymentAllocateSum(final MPaymentAllocate[] pAllocs) {
+    protected boolean verifyPaymentAllocateSum(final MPaymentAllocate[] pAllocs) {
         BigDecimal sumPaymentAllocates = Env.ZERO;
         if (pAllocs.length > 0) {
             for (final MPaymentAllocate pAlloc : pAllocs) {

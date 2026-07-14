@@ -14,6 +14,9 @@ import org.compiere.model.ModelValidationEngine;
 import org.compiere.model.ModelValidator;
 import org.compiere.model.Query;
 import org.compiere.process.DocAction;
+import org.compiere.process.DocumentEngine;
+import org.compiere.util.DB;
+import org.compiere.util.Util;
 
 public class MProductionPlanKJS extends X_KJS_ProductionPlan implements DocAction
 {

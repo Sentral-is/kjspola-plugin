@@ -480,7 +480,7 @@ public class MProductionExt extends MProduction
         return "IP";
     }
     
-    protected String validateEndProduct(final int M_Product_ID) {
+    public String validateEndProduct(final int M_Product_ID) {
         String msg = this.isBom(M_Product_ID);
         if (!Util.isEmpty(msg)) {
             return msg;

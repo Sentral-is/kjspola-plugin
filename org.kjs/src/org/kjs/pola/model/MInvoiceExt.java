@@ -424,7 +424,7 @@ public class MInvoiceExt extends MInvoice implements DocAction
             return null;
         }
         final MBPartner bp = new MBPartner(this.getCtx(), this.getC_BPartner_ID(), (String)null);
-        final int counterAD_Org_ID = bp.getAD_OrgBP_ID_Int();
+        final int counterAD_Org_ID = bp.getAD_OrgBP_ID();
         if (counterAD_Org_ID == 0) {
             return null;
         }
