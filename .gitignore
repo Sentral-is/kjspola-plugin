@@ -1,1 +1,7 @@
 org.kjs/target/
+
+# Eclipse descriptor created when opening the repo root as a project (not the real plugin projects)
+/.project
+
+# Local log captures
+logs/
