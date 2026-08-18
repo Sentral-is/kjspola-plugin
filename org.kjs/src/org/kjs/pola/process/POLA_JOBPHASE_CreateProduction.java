@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.logging.Level;
 
+import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MProduction;
 import org.compiere.model.MProductionLine;
 import org.compiere.process.ProcessInfoParameter;
@@ -94,15 +95,22 @@ public class POLA_JOBPHASE_CreateProduction extends SvrProcess {
 		
 //        final StringBuilder sqlBOM = new StringBuilder("SELECT prod.M_Product_ID,prod.Value,pplb.Qty,asi.M_AttributeSetInstance_ID,asi.Description FROM KJS_ProductionPlanLineBOM pplb JOIN M_Product prod ON pplb.M_Product_ID=prod.M_Product_ID LEFT JOIN M_AttributeSetInstance asi ON pplb.M_AttributeSetInstance_ID=asi.M_AttributeSetInstance_ID WHERE KJS_ProductionPlanLine_ID=?");
 
+		// M_Product_BOM is a VIEW in iDempiere 13 (over pp_product_bom/pp_product_bomline) and no
+		// longer carries the client's custom M_Alternate_ID. The alternate tagging now lives in the
+		// plugin-owned KJS_BOMLineAlternate table (PP_Product_BOMLine_ID -> M_Alternate_ID), joined
+		// here via the view's M_Product_BOM_ID (= pp_product_bomline_id).
 		StringBuilder SQLGetBOM = new StringBuilder();
-		SQLGetBOM.append("SELECT pplb.M_ProductBOM_ID ,prod.value,pplb.BOMqty");
-		SQLGetBOM.append(" FROM M_Product_BOM pplb");
-		SQLGetBOM.append(" JOIN M_Product prod ON pplb.M_Product_ID=prod.M_Product_ID ");
-		SQLGetBOM.append(" WHERE prod.M_product_id = ?");
-		SQLGetBOM.append(" AND pplb.M_ALternate_ID = ?");
+		SQLGetBOM.append("SELECT v.M_ProductBOM_ID, v.BOMQty");
+		SQLGetBOM.append(" FROM M_Product_BOM v");
+		SQLGetBOM.append(" JOIN KJS_BOMLineAlternate a ON a.PP_Product_BOMLine_ID = v.M_Product_BOM_ID");
+		SQLGetBOM.append(" WHERE v.M_Product_ID = ?");
+		SQLGetBOM.append(" AND a.M_Alternate_ID = ?");
+		SQLGetBOM.append(" AND v.IsActive = 'Y' AND a.IsActive = 'Y'");
+		SQLGetBOM.append(" ORDER BY v.Line");
 
         PreparedStatement pstmt = null;
 	    ResultSet rs = null;
+	    int componentCount = 0;
 	    	try {
 	            pstmt = (PreparedStatement)DB.prepareStatement(SQLGetBOM.toString(), (String)null);
                 pstmt.setInt(1, JobPhase.getM_Product_ID());
@@ -110,35 +118,44 @@ public class POLA_JOBPHASE_CreateProduction extends SvrProcess {
 
 	            rs = pstmt.executeQuery();
 	            while (rs.next()) {
-	            	
+	            	componentCount++;
 	            	line = line+10;
 	                final MProductionLine pl = new MProductionLine(Env.getCtx(), 0, this.get_TrxName());
                     final int M_ProductBOM_ID = rs.getInt(1);
-                    final BigDecimal Qty = rs.getBigDecimal(3).multiply(production.getProductionQty());
-//                    final int M_AttributeSetInstance_ID = rs.getInt(4);
+                    final BigDecimal Qty = rs.getBigDecimal(2).multiply(production.getProductionQty());
                     pl.setAD_Org_ID(production.getAD_Org_ID());
                     pl.setM_Product_ID(M_ProductBOM_ID);
                     pl.setM_Locator_ID(production.getM_Locator_ID());
                     pl.setPlannedQty(Qty);
                     pl.setQtyUsed(Qty);
-//                    pl.setM_AttributeSetInstance_ID(M_AttributeSetInstance_ID);
                     pl.setM_Production_ID(production.getM_Production_ID());
                     pl.setLine(line);
                     pl.saveEx(this.get_TrxName());
-	            	
+
 	            }
 	        }
 	        catch (SQLException err) {
-	            this.log.log(Level.SEVERE, SQLGetBOM.toString(), (Throwable)err);
-	            rollback();
+	            // Surface the failure instead of swallowing it: the old code logged and called
+	            // rollback() but still returned success, so the LHP Line grid came back empty with
+	            // no error shown. SvrProcess rolls the transaction back when we throw.
+	            throw new AdempiereException("Failed to create LHP component lines", err);
 	        }
 	        finally {
 	            DB.close(rs, (Statement)pstmt);
 	            rs = null;
 	            pstmt = null;
 	        }
-		
-	    	
+
+	    	// A properly JOB-linked production with a chosen alternate must resolve to components.
+	    	// Zero here means the alternate has no BOM mapping (bad/missing data) -> fail loudly
+	    	// rather than silently create only the end-product line and mark it created.
+	    	// Deliberately excludes the unlinked-production case (no JOB phase / no alternate).
+	    	if (p_KJS_ProductionPlanLine_ID > 0
+	    			&& JobParent.get_ValueAsInt("M_Alternate_ID") > 0
+	    			&& componentCount == 0) {
+	    		throw new AdempiereException("No active BOM components found for the selected alternate");
+	    	}
+
 	    	production.setIsCreated("Y");
 	    	production.saveEx();
 		
