@@ -1,15 +1,22 @@
-# BOM Alternate — deployment (fix for `Create_ProdComplete`, `Create lines from`, BOM edit + import)
+# BOM Alternate — deployment guide
 
-## Current model — Phase 2 (canonical column on PP_Product_BOMLine)
+Fixes the client's "Alternate" (recipe-variant) handling that broke when the iDempiere 6.2 → 13
+upgrade (IDEMPIERE-1250) turned `M_Product_BOM` into a **view** and dropped the custom columns:
+`Create_ProdComplete` (LHP), `Create lines from` (JOB Phase), BOM alternate **display/edit**, and
+**Import BOM**.
 
-The alternate is now a first-class column **`PP_Product_BOMLine.M_Alternate_ID`** (Table Direct →
-`M_Alternate`), so it can be shown/edited on the Product **Components** tab and set by `ImportBOM`.
-`M_Alternate_ID` is the single canonical selector; the legacy `BOMType` string is dropped (it was just
-the alternate's name). Both production buttons select BOM lines by
+**This is the current, canonical approach — there is no earlier step to run first.** (The older
+side-table approach is deprecated; see the bottom section, needed only for rollback.)
+
+## How it works
+
+The alternate is a first-class column **`PP_Product_BOMLine.M_Alternate_ID`** (Table Direct →
+`M_Alternate`), shown/edited on the Product **Components** tab and set by `ImportBOM`. It is the single
+canonical selector; both production buttons select BOM lines by
 `PP_Product_BOMLine.M_Alternate_ID = KJS_ProductionPlan.M_Alternate_ID`, reading `PP_Product_BOMLine`
 directly.
 
-**What ships (Phase 2):**
+## What ships
 
 | Piece | File |
 |---|---|
@@ -18,113 +25,79 @@ directly.
 | Import (`Import BOM`) sets the alternate | `src/org/kjs/pola/process/ImportBOM.java` |
 | Add column + index | `sql/10_add_ppbomline_alternate.sql` |
 | One-time data migration | `sql/11_migrate_ppbomline_alternate.sql` |
-| Dictionary: `AD_Column` M_Alternate_ID on PP_Product_BOMLine + `AD_Field` on Components tab | **2Pack** (built in iDempiere, shipped in `META-INF/`) |
+| Dictionary: `AD_Column` M_Alternate_ID + `AD_Field` on Components tab | created in the UI (below); optionally packaged as a 2Pack |
 
-**Deploy order (per env; rehearse `polacup_v13` → VPS → prod):** run `sql/10` → run `sql/11` (verify
-pre-flight all `0`, counts match) → deploy the version-bumped bundle (code + 2Pack) → restart (2Pack
-installs the AD column/field) → test UI, both buttons, and import. The AD column must exist before
-`ImportBOM` runs, or it fails loudly by design.
+## Deploy runbook (per environment)
 
-**Rollback window:** the Phase-1 side table `KJS_BOMLineAlternate` is intentionally **kept** (not
-dropped) so a rollback to the Phase-1 bundle still works. Drop it only after production reconciliation:
-`DROP TABLE KJS_BOMLineAlternate;` (then remove `sql/01`, `sql/02`).
-
----
-
-## Phase 1 (superseded, retained for rollback) — KJS_BOMLineAlternate side table
-
-## Why this exists
-
-Two buttons read component BOM from `M_Product_BOM`, filtered by custom columns the client added:
-
-- **`Create_ProdComplete`** (LHP → `POLA_JOBPHASE_CreateProduction`) filtered by `M_Alternate_ID`.
-- **`Create lines from`** (JOB Phase → `CreateFromProductionPlanLine`) filtered by `BOMType`
-  (which held the alternate's name as text).
-
-The iDempiere 6.2 → 13 upgrade (IDEMPIERE-1250) turned `M_Product_BOM` into a **view** over
-`pp_product_bom`/`pp_product_bomline` that carries neither custom column (and recomputes `BOMType`
-to just `'O'`/`'P'`). So `Create_ProdComplete` errored + came back empty, and `Create lines from`
-silently returned no BOM.
-
-Fix: both custom columns are preserved per BOM line in a plugin-owned table **`KJS_BOMLineAlternate`**
-(`PP_Product_BOMLine_ID → M_Alternate_ID` **and** `BOMType`), backfilled 1:1 from the preserved
-`m_product_bom_old`. Both buttons read `PP_Product_BOMLine` **directly** (not the `M_Product_BOM`
-view, which hides lines under inactive headers) joined to this table. No standard iDempiere table is
-modified.
-
-## What ships
-
-| Piece | File |
-|---|---|
-| LHP process fix (`Create_ProdComplete`) | `src/org/kjs/pola/process/POLA_JOBPHASE_CreateProduction.java` |
-| JOB Phase form fix (`Create lines from`) | `src/org/kjs/pola/form/CreateFromProductionPlanLine.java` |
-| Table creation (`M_Alternate_ID` + `BOMType`) | `sql/01_create_KJS_BOMLineAlternate.sql` |
-| One-time data backfill | `sql/02_backfill_KJS_BOMLineAlternate.sql` |
-
-Both fixes need **no Java model class** — they use raw SQL. The `I_*`/`X_*` model +
-`KJSModelFactory` registration are only needed later for a maintenance UI / import handling.
-
-## Two ways to create the table
-
-**A. Proper release — Application Dictionary + 2Pack (recommended for production)**
-1. In iDempiere, create the table in *Table and Column*: `AD_Table` `KJS_BOMLineAlternate` with the
-   columns in `01_create_...sql` (`M_Alternate_ID`, `PP_Product_BOMLine_ID` as Table Direct; the
-   standard audit/UU/ID columns are added automatically). Run **Synchronize Column** to create the
-   physical table.
-2. **Pack Out** that table into a 2Pack and drop it at `org.kjs/META-INF/2Pack.zip`.
-3. Add `META-INF/2Pack.zip` to `bin.includes` in `build.properties`.
-4. **Bump the bundle version** in `META-INF/MANIFEST.MF` — `AdempiereActivator` only applies a 2Pack
-   whose version it has not imported yet. Without a bump, an already-installed instance never gets
-   the table.
-   On startup the activator then creates the table automatically on every environment.
-
-**B. Fallback / dev — plain SQL**
-Run `sql/01_create_KJS_BOMLineAlternate.sql`. Creates only the physical table (enough for the
-button, which queries by raw SQL). Do **not** combine A and B on the same DB — the 2Pack would try
-to create a table that already exists.
-
-## Applying the SQL (rehearse on `polacup_v13` first, then identical on production)
-
-Run from the plugin root. Connect as the **`adempiere`** user (matches the app's schema/ownership),
-`-v ON_ERROR_STOP=1` so it halts on the first error. Both scripts are **idempotent** — safe to re-run,
-and they handle both a fresh install and an already-deployed table.
-
-```bash
-cd <plugin-root>            # e.g. ~/kjspola-plugin
-
-# 1. create the table (or add the BOMType column if the table already exists)
-PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
-  -v ON_ERROR_STOP=1 -f org.kjs/sql/01_create_KJS_BOMLineAlternate.sql
-
-# 2. pre-flight checks + backfill (M_Alternate_ID and BOMType)
-PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
-  -v ON_ERROR_STOP=1 -f org.kjs/sql/02_backfill_KJS_BOMLineAlternate.sql
-```
-
-Connection per environment:
+Connect as the **`adempiere`** user (matches the app schema/ownership). Environments:
 
 | Environment | host | port | db |
 |---|---|---|---|
 | Local dev (WSL) | `localhost` | `5435` | `polacup_v13` |
-| VPS test/prod   | `localhost` | `5432` | `polacup` |
+| VPS | `localhost` | `5432` | `polacup` |
 
-Confirm in the output: script 1 → `CREATE TABLE` / `ALTER TABLE` / `CREATE INDEX`; script 2 →
-pre-flight checks all `0`, then `INSERT 0 <N>`, then `final_table_count = <N>` (matching
-`source_rows_with_alternate`). On a re-run the `INSERT` is `0` and the `UPDATE` a no-op — that's the
-idempotency working, not an error.
+**0. Backup (recommended)**
+```bash
+sudo -u postgres pg_dump -Fc <db> -f ~/<db>_before_bomalt_$(date +%Y%m%d).dump
+```
 
-Then deploy the updated plugin bundle (both fixes) and restart iDempiere. Verify in the UI:
-- **Create lines from** on a JOB Phase (with an Alternate) → the BOM tab fills.
-- **Create_ProdComplete** on a JOB-linked LHP → end-product + component lines appear in LHP Line.
+**1. Column + data (SQL)** — idempotent, safe to re-run:
+```bash
+cd <plugin-root>            # e.g. ~/kjspola-plugin  (git pull for latest scripts)
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -v ON_ERROR_STOP=1 -f org.kjs/sql/10_add_ppbomline_alternate.sql
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -v ON_ERROR_STOP=1 -f org.kjs/sql/11_migrate_ppbomline_alternate.sql
+```
+Confirm: `sql/11` pre-flight checks all `0`, then the row counts match.
 
-## Production pre-requisite to confirm before go-live
+**2. Dictionary (iDempiere UI, System Administrator role)** — makes the field show and lets `ImportBOM`
+write it:
+- *Table and Column* → table `PP_Product_BOMLine` → new **Column**: System Element `M_Alternate_ID`,
+  Reference **Table Direct**, Length `10`, Entity Type **User maintained** → Save → **Synchronize Column**.
+- *Window, Tab & Field* → Window `Product` → tab `Components` → new **Field**: Column `M_Alternate_ID`,
+  **Displayed** + **Show in Grid** → Save.
 
-The backfill reads `m_product_bom_old`. It exists only because the DB went through the 6.2 → 13
-migration. Confirm on the real production DB that `m_product_bom_old` exists **and** still holds the
-alternate data (`SELECT count(*) FROM m_product_bom_old WHERE m_alternate_id IS NOT NULL;` ~105,587)
-before relying on the backfill.
+> The `AD_Column` must exist before **Import BOM** runs — the new `ImportBOM` writes the alternate via
+> the registered column and fails loudly if it is missing. The two buttons only need the physical
+> column + data (step 1).
 
-## Rollback
+**3. Deploy the plugin bundle** — build (PDE Export), **bump the bundle version**, drop into `plugins/`,
+restart.
 
-Additive and safe: `DROP TABLE KJS_BOMLineAlternate;` and revert the bundle. Note this is a *forward*
-migration — reverting to the old bundle restores the original upgrade failure; it is not a fix.
+**4. Verify**
+- Product → Components tab shows/edits **Alternate**
+- **Create lines from** fills the JOB BOM; **Create_ProdComplete** fills LHP lines
+- **Import BOM** carries the alternate
+
+### Prod shortcut (dump/restore)
+The dictionary records (AD_Column/AD_Field), the physical column, and the migrated data all live in the
+database. So if prod is created by **dump/restore from `polacup_v13`** (where steps 1–2 are done), prod
+inherits them automatically — you only deploy the bundle there. A **separate running** environment (the
+VPS) must run steps 1–2 itself.
+
+### Prerequisite to confirm on any target DB
+`sql/11` reads `m_product_bom_old` (left behind by the 6.2→13 migration). Confirm it exists with data:
+`SELECT count(*) FROM m_product_bom_old WHERE m_alternate_id IS NOT NULL;` (~105k).
+
+---
+
+## Deprecated — `KJS_BOMLineAlternate` side table (rollback only)
+
+The first version of this fix stored the alternate in a plugin-owned side table
+`KJS_BOMLineAlternate`. It is **superseded** by the column above and is **not part of a fresh
+deployment**. Its scripts are kept in `sql/deprecated/` (`01_create_…`, `02_backfill_…`) only so a
+rollback to the old bundle can recreate/read it.
+
+**Retiring it (do only after every environment runs the new bundle and you won't roll back):**
+```bash
+# canary — rename first (rollback = rename back, no data loss)
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -c "ALTER TABLE KJS_BOMLineAlternate RENAME TO KJS_BOMLineAlternate_deprecated;"
+# ...observe a few days, then:
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -c "DROP TABLE KJS_BOMLineAlternate_deprecated;"
+```
+Trade-off: renaming ends easy rollback — the old bundle looks for `KJS_BOMLineAlternate` by its
+original name, so you'd rename it back before redeploying the old bundle. Verified safe to drop:
+nothing references it (no plugin code, not in the dictionary, no views/functions/FKs).
