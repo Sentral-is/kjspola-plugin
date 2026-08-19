@@ -95,20 +95,17 @@ public class POLA_JOBPHASE_CreateProduction extends SvrProcess {
 		
 //        final StringBuilder sqlBOM = new StringBuilder("SELECT prod.M_Product_ID,prod.Value,pplb.Qty,asi.M_AttributeSetInstance_ID,asi.Description FROM KJS_ProductionPlanLineBOM pplb JOIN M_Product prod ON pplb.M_Product_ID=prod.M_Product_ID LEFT JOIN M_AttributeSetInstance asi ON pplb.M_AttributeSetInstance_ID=asi.M_AttributeSetInstance_ID WHERE KJS_ProductionPlanLine_ID=?");
 
-		// M_Product_BOM is a VIEW in iDempiere 13 (over pp_product_bom/pp_product_bomline) and no
-		// longer carries the client's custom M_Alternate_ID. The alternate tagging now lives in the
-		// plugin-owned KJS_BOMLineAlternate table (PP_Product_BOMLine_ID -> M_Alternate_ID). We read
-		// PP_Product_BOMLine directly rather than through the M_Product_BOM view, because the view
-		// hides lines whose header is inactive and would drop components that were active in 6.2.
-		// Component = l.M_Product_ID, qty = l.QtyBOM, parent product = the header's b.M_Product_ID.
+		// Phase 2: M_Alternate_ID is the canonical alternate, stored as a column on PP_Product_BOMLine.
+		// Read the BOM lines directly (not the M_Product_BOM view, which hides lines under inactive
+		// headers that were active in 6.2). Component = l.M_Product_ID, qty = l.QtyBOM, parent product
+		// = the header's b.M_Product_ID.
 		StringBuilder SQLGetBOM = new StringBuilder();
 		SQLGetBOM.append("SELECT l.M_Product_ID, l.QtyBOM");
-		SQLGetBOM.append(" FROM KJS_BOMLineAlternate a");
-		SQLGetBOM.append(" JOIN PP_Product_BOMLine l ON l.PP_Product_BOMLine_ID = a.PP_Product_BOMLine_ID");
+		SQLGetBOM.append(" FROM PP_Product_BOMLine l");
 		SQLGetBOM.append(" JOIN PP_Product_BOM b ON b.PP_Product_BOM_ID = l.PP_Product_BOM_ID");
 		SQLGetBOM.append(" WHERE b.M_Product_ID = ?");
-		SQLGetBOM.append(" AND a.M_Alternate_ID = ?");
-		SQLGetBOM.append(" AND a.IsActive = 'Y'");
+		SQLGetBOM.append(" AND l.M_Alternate_ID = ?");
+		SQLGetBOM.append(" AND l.IsActive = 'Y'");
 		SQLGetBOM.append(" ORDER BY l.Line");
 
         PreparedStatement pstmt = null;

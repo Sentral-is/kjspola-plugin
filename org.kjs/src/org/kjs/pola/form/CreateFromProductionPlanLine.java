@@ -23,7 +23,7 @@ public class CreateFromProductionPlanLine extends CreateFrom
     protected int M_Product_ID;
     protected int AD_Org_ID;
     protected int KJS_ProductionPlan_ID;
-    protected String BOMType;
+    protected int M_Alternate_ID;
     
     public CreateFromProductionPlanLine(final GridTab gridTab) {
         super(gridTab);
@@ -40,7 +40,7 @@ public class CreateFromProductionPlanLine extends CreateFrom
         this.M_Product_ID = (int)this.getGridTab().getValue("M_Product_ID");
         this.AD_Org_ID = (int)this.getGridTab().getValue("AD_Org_ID");
         this.KJS_ProductionPlan_ID = (int)this.getGridTab().getValue("KJS_ProductionPlan_ID");
-        final String check = "SELECT BOMType FROM KJS_ProductionPlan WHERE KJS_ProductionPlan_ID=?";
+        final String check = "SELECT M_Alternate_ID FROM KJS_ProductionPlan WHERE KJS_ProductionPlan_ID=?";
         PreparedStatement pstmt = null;
         ResultSet rs = null;
         try {
@@ -48,7 +48,7 @@ public class CreateFromProductionPlanLine extends CreateFrom
             pstmt.setInt(1, this.KJS_ProductionPlan_ID);
             rs = pstmt.executeQuery();
             while (rs.next()) {
-                this.BOMType = rs.getString(1);
+                this.M_Alternate_ID = rs.getInt(1);
             }
         }
         catch (SQLException e) {
@@ -71,20 +71,17 @@ public class CreateFromProductionPlanLine extends CreateFrom
     
     protected Vector<Vector<Object>> getBOMData(final int M_Product_ID) {
         final Vector<Vector<Object>> data = new Vector<Vector<Object>>();
-        // M_Product_BOM is a VIEW in iDempiere 13 and its recomputed BOMType is only 'O'/'P', so the
-        // old "WHERE pb.BOMType = <alternate name>" filter matched nothing. The original BOMType
-        // string is preserved per BOM line in the plugin-owned KJS_BOMLineAlternate table. We read
-        // PP_Product_BOMLine directly (not the M_Product_BOM view) because the view hides lines whose
-        // header is inactive, which drops components that were active in 6.2. Component = l.M_Product_ID,
-        // qty = l.QtyBOM, parent product = the header's b.M_Product_ID. Projection order and bind
-        // parameters are unchanged (Line, M_ProductBOM_ID, name, BOMQty; M_Product_ID, BOMType).
-        final StringBuilder sql = new StringBuilder("SELECT l.Line,l.M_Product_ID,prod2.name,l.QtyBOM FROM KJS_BOMLineAlternate a JOIN PP_Product_BOMLine l ON l.PP_Product_BOMLine_ID=a.PP_Product_BOMLine_ID JOIN PP_Product_BOM b ON b.PP_Product_BOM_ID=l.PP_Product_BOM_ID LEFT JOIN M_Product prod2 ON prod2.M_Product_ID=l.M_Product_ID WHERE b.M_Product_ID=? AND a.BOMType=? AND a.IsActive='Y' ORDER BY l.Line");
+        // Phase 2: M_Alternate_ID is the canonical alternate, stored as a column on PP_Product_BOMLine.
+        // Select the BOM lines for the JOB's product + the JOB's alternate directly from
+        // PP_Product_BOMLine (not the M_Product_BOM view, which hides lines under inactive headers).
+        // Component = l.M_Product_ID, qty = l.QtyBOM, parent product = the header's b.M_Product_ID.
+        final StringBuilder sql = new StringBuilder("SELECT l.Line,l.M_Product_ID,prod2.name,l.QtyBOM FROM PP_Product_BOMLine l JOIN PP_Product_BOM b ON b.PP_Product_BOM_ID=l.PP_Product_BOM_ID LEFT JOIN M_Product prod2 ON prod2.M_Product_ID=l.M_Product_ID WHERE b.M_Product_ID=? AND l.M_Alternate_ID=? AND l.IsActive='Y' ORDER BY l.Line");
         PreparedStatement pstmt = null;
         ResultSet rs = null;
         try {
             pstmt = (PreparedStatement)DB.prepareStatement(sql.toString(), (String)null);
             pstmt.setInt(1, M_Product_ID);
-            pstmt.setString(2, this.BOMType);
+            pstmt.setInt(2, this.M_Alternate_ID);
             rs = pstmt.executeQuery();
             while (rs.next()) {
                 final Vector<Object> line = new Vector<Object>();

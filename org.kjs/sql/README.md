@@ -1,4 +1,37 @@
-# KJS_BOMLineAlternate — deployment (fix for `Create_ProdComplete` + `Create lines from`)
+# BOM Alternate — deployment (fix for `Create_ProdComplete`, `Create lines from`, BOM edit + import)
+
+## Current model — Phase 2 (canonical column on PP_Product_BOMLine)
+
+The alternate is now a first-class column **`PP_Product_BOMLine.M_Alternate_ID`** (Table Direct →
+`M_Alternate`), so it can be shown/edited on the Product **Components** tab and set by `ImportBOM`.
+`M_Alternate_ID` is the single canonical selector; the legacy `BOMType` string is dropped (it was just
+the alternate's name). Both production buttons select BOM lines by
+`PP_Product_BOMLine.M_Alternate_ID = KJS_ProductionPlan.M_Alternate_ID`, reading `PP_Product_BOMLine`
+directly.
+
+**What ships (Phase 2):**
+
+| Piece | File |
+|---|---|
+| LHP process (`Create_ProdComplete`) | `src/org/kjs/pola/process/POLA_JOBPHASE_CreateProduction.java` |
+| JOB Phase form (`Create lines from`) | `src/org/kjs/pola/form/CreateFromProductionPlanLine.java` |
+| Import (`Import BOM`) sets the alternate | `src/org/kjs/pola/process/ImportBOM.java` |
+| Add column + index | `sql/10_add_ppbomline_alternate.sql` |
+| One-time data migration | `sql/11_migrate_ppbomline_alternate.sql` |
+| Dictionary: `AD_Column` M_Alternate_ID on PP_Product_BOMLine + `AD_Field` on Components tab | **2Pack** (built in iDempiere, shipped in `META-INF/`) |
+
+**Deploy order (per env; rehearse `polacup_v13` → VPS → prod):** run `sql/10` → run `sql/11` (verify
+pre-flight all `0`, counts match) → deploy the version-bumped bundle (code + 2Pack) → restart (2Pack
+installs the AD column/field) → test UI, both buttons, and import. The AD column must exist before
+`ImportBOM` runs, or it fails loudly by design.
+
+**Rollback window:** the Phase-1 side table `KJS_BOMLineAlternate` is intentionally **kept** (not
+dropped) so a rollback to the Phase-1 bundle still works. Drop it only after production reconciliation:
+`DROP TABLE KJS_BOMLineAlternate;` (then remove `sql/01`, `sql/02`).
+
+---
+
+## Phase 1 (superseded, retained for rollback) — KJS_BOMLineAlternate side table
 
 ## Why this exists
 

@@ -4,6 +4,7 @@ import java.sql.ResultSet;
 import java.sql.PreparedStatement;
 import java.sql.Timestamp;
 import java.sql.Statement;
+import org.adempiere.exceptions.AdempiereException;
 import org.compiere.model.MProduct;
 import org.compiere.model.Query;
 import org.eevolution.model.MPPProductBOM;
@@ -89,11 +90,20 @@ public class ImportBOM extends SvrProcess implements ImportProcess
                 bom.setM_Product_ID(imp.getM_ProductBOM_ID());
                 bom.setLine(imp.getLine());
                 bom.setDescription(imp.getDescription());
-                bom.setComponentType(imp.getBOMType());
+                // I_Product_BOM.BOMType holds the client's alternate name, not a native ComponentType,
+                // so set a valid ComponentType and route the alternate to the custom column below.
+                bom.setComponentType(MPPProductBOMLine.COMPONENTTYPE_Component);
                 bom.setQtyBOM(imp.getBOMQty());
                 bom.setAD_Org_ID(imp.getAD_Org_ID());
                 bom.set_ValueNoCheck("CreatedBy", (Object)imp.getCreatedBy());
                 bom.set_ValueNoCheck("UpdatedBy", (Object)imp.getUpdatedBy());
+                // Phase 2: carry the alternate onto the canonical PP_Product_BOMLine.M_Alternate_ID
+                // column. Fail loudly if the AD column is not present (2Pack not applied yet) rather
+                // than silently dropping it (set_ValueOfColumn would just decline an unknown column).
+                final int altId = imp.get_ValueAsInt("M_Alternate_ID");
+                if (altId > 0 && !bom.set_ValueOfColumnReturningBoolean("M_Alternate_ID", (Object)altId)) {
+                    throw new AdempiereException("PP_Product_BOMLine.M_Alternate_ID not in dictionary - apply the 2Pack first");
+                }
                 prod.setIsBOM(true);
                 prod.saveEx(this.get_TrxName());
                 bom.saveEx(this.get_TrxName());
