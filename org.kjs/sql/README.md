@@ -1,26 +1,35 @@
-# KJS_BOMLineAlternate — deployment (Phase 1 fix for `Create_ProdComplete`)
+# KJS_BOMLineAlternate — deployment (fix for `Create_ProdComplete` + `Create lines from`)
 
 ## Why this exists
 
-The `Create_ProdComplete` button (`org.kjs.pola.process.POLA_JOBPHASE_CreateProduction`) used to
-read component BOM from `M_Product_BOM` filtered by the client's custom column `M_Alternate_ID`.
-The iDempiere 6.2 → 13 upgrade (IDEMPIERE-1250) turned `M_Product_BOM` into a **view** with no such
-column, so the query failed, the old code swallowed the error, and the LHP Line grid came back empty.
+Two buttons read component BOM from `M_Product_BOM`, filtered by custom columns the client added:
 
-Fix: the alternate tagging now lives in a plugin-owned table **`KJS_BOMLineAlternate`**
-(`PP_Product_BOMLine_ID → M_Alternate_ID`), and the process joins it. No standard iDempiere table is
-modified. The old data survives in `m_product_bom_old` and is copied across by the backfill.
+- **`Create_ProdComplete`** (LHP → `POLA_JOBPHASE_CreateProduction`) filtered by `M_Alternate_ID`.
+- **`Create lines from`** (JOB Phase → `CreateFromProductionPlanLine`) filtered by `BOMType`
+  (which held the alternate's name as text).
 
-## What ships in this Phase 1
+The iDempiere 6.2 → 13 upgrade (IDEMPIERE-1250) turned `M_Product_BOM` into a **view** over
+`pp_product_bom`/`pp_product_bomline` that carries neither custom column (and recomputes `BOMType`
+to just `'O'`/`'P'`). So `Create_ProdComplete` errored + came back empty, and `Create lines from`
+silently returned no BOM.
+
+Fix: both custom columns are preserved per BOM line in a plugin-owned table **`KJS_BOMLineAlternate`**
+(`PP_Product_BOMLine_ID → M_Alternate_ID` **and** `BOMType`), backfilled 1:1 from the preserved
+`m_product_bom_old`. Both buttons read `PP_Product_BOMLine` **directly** (not the `M_Product_BOM`
+view, which hides lines under inactive headers) joined to this table. No standard iDempiere table is
+modified.
+
+## What ships
 
 | Piece | File |
 |---|---|
-| Process fix (query + error handling + zero-result guard) | `src/org/kjs/pola/process/POLA_JOBPHASE_CreateProduction.java` |
-| Table creation (physical DDL / dev + fallback) | `sql/01_create_KJS_BOMLineAlternate.sql` |
+| LHP process fix (`Create_ProdComplete`) | `src/org/kjs/pola/process/POLA_JOBPHASE_CreateProduction.java` |
+| JOB Phase form fix (`Create lines from`) | `src/org/kjs/pola/form/CreateFromProductionPlanLine.java` |
+| Table creation (`M_Alternate_ID` + `BOMType`) | `sql/01_create_KJS_BOMLineAlternate.sql` |
 | One-time data backfill | `sql/02_backfill_KJS_BOMLineAlternate.sql` |
 
-Phase 1 needs **no Java model class** — the process uses raw SQL. The `I_*`/`X_*` model +
-`KJSModelFactory` registration are only needed in Phase 2 (maintenance UI / import).
+Both fixes need **no Java model class** — they use raw SQL. The `I_*`/`X_*` model +
+`KJSModelFactory` registration are only needed later for a maintenance UI / import handling.
 
 ## Two ways to create the table
 
@@ -41,19 +50,39 @@ Run `sql/01_create_KJS_BOMLineAlternate.sql`. Creates only the physical table (e
 button, which queries by raw SQL). Do **not** combine A and B on the same DB — the 2Pack would try
 to create a table that already exists.
 
-## Deploy order (rehearse on `polacup_v13` first, then identical on production)
+## Applying the SQL (rehearse on `polacup_v13` first, then identical on production)
 
-1. Create the table (A or B) — table must exist before the backfill.
-2. Run `sql/02_backfill_KJS_BOMLineAlternate.sql`:
-   ```bash
-   PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
-     -f sql/02_backfill_KJS_BOMLineAlternate.sql
-   ```
-   Check the pre-flight assertions are all `0`, then confirm `INSERT 0 105587` and that
-   `final_table_count` equals `source_rows_with_alternate`.
-3. Deploy the updated plugin bundle (with the process fix).
-4. Verify: open a JOB-linked LHP whose product has backfilled alternate BOM lines → set qty →
-   **Create_ProdComplete** → end-product line + component lines appear in LHP Line.
+Run from the plugin root. Connect as the **`adempiere`** user (matches the app's schema/ownership),
+`-v ON_ERROR_STOP=1` so it halts on the first error. Both scripts are **idempotent** — safe to re-run,
+and they handle both a fresh install and an already-deployed table.
+
+```bash
+cd <plugin-root>            # e.g. ~/kjspola-plugin
+
+# 1. create the table (or add the BOMType column if the table already exists)
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -v ON_ERROR_STOP=1 -f org.kjs/sql/01_create_KJS_BOMLineAlternate.sql
+
+# 2. pre-flight checks + backfill (M_Alternate_ID and BOMType)
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -v ON_ERROR_STOP=1 -f org.kjs/sql/02_backfill_KJS_BOMLineAlternate.sql
+```
+
+Connection per environment:
+
+| Environment | host | port | db |
+|---|---|---|---|
+| Local dev (WSL) | `localhost` | `5435` | `polacup_v13` |
+| VPS test/prod   | `localhost` | `5432` | `polacup` |
+
+Confirm in the output: script 1 → `CREATE TABLE` / `ALTER TABLE` / `CREATE INDEX`; script 2 →
+pre-flight checks all `0`, then `INSERT 0 <N>`, then `final_table_count = <N>` (matching
+`source_rows_with_alternate`). On a re-run the `INSERT` is `0` and the `UPDATE` a no-op — that's the
+idempotency working, not an error.
+
+Then deploy the updated plugin bundle (both fixes) and restart iDempiere. Verify in the UI:
+- **Create lines from** on a JOB Phase (with an Alternate) → the BOM tab fills.
+- **Create_ProdComplete** on a JOB-linked LHP → end-product + component lines appear in LHP Line.
 
 ## Production pre-requisite to confirm before go-live
 

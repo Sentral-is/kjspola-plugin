@@ -71,7 +71,14 @@ public class CreateFromProductionPlanLine extends CreateFrom
     
     protected Vector<Vector<Object>> getBOMData(final int M_Product_ID) {
         final Vector<Vector<Object>> data = new Vector<Vector<Object>>();
-        final StringBuilder sql = new StringBuilder("SELECT pb.Line,pb.M_ProductBOM_ID,prod2.name,pb.BOMQty FROM M_Product_BOM pb JOIN M_Product prod ON prod.M_Product_ID=pb.M_Product_ID LEFT JOIN M_Product prod2 ON prod2.M_Product_ID=pb.M_ProductBOM_ID WHERE prod.M_Product_ID=? and pb.BOMType=? ORDER BY pb.Line");
+        // M_Product_BOM is a VIEW in iDempiere 13 and its recomputed BOMType is only 'O'/'P', so the
+        // old "WHERE pb.BOMType = <alternate name>" filter matched nothing. The original BOMType
+        // string is preserved per BOM line in the plugin-owned KJS_BOMLineAlternate table. We read
+        // PP_Product_BOMLine directly (not the M_Product_BOM view) because the view hides lines whose
+        // header is inactive, which drops components that were active in 6.2. Component = l.M_Product_ID,
+        // qty = l.QtyBOM, parent product = the header's b.M_Product_ID. Projection order and bind
+        // parameters are unchanged (Line, M_ProductBOM_ID, name, BOMQty; M_Product_ID, BOMType).
+        final StringBuilder sql = new StringBuilder("SELECT l.Line,l.M_Product_ID,prod2.name,l.QtyBOM FROM KJS_BOMLineAlternate a JOIN PP_Product_BOMLine l ON l.PP_Product_BOMLine_ID=a.PP_Product_BOMLine_ID JOIN PP_Product_BOM b ON b.PP_Product_BOM_ID=l.PP_Product_BOM_ID LEFT JOIN M_Product prod2 ON prod2.M_Product_ID=l.M_Product_ID WHERE b.M_Product_ID=? AND a.BOMType=? AND a.IsActive='Y' ORDER BY l.Line");
         PreparedStatement pstmt = null;
         ResultSet rs = null;
         try {

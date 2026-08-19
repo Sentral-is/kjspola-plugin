@@ -55,19 +55,29 @@ WHERE  o.m_alternate_id IS NOT NULL;
 INSERT INTO KJS_BOMLineAlternate
     (KJS_BOMLineAlternate_ID, AD_Client_ID, AD_Org_ID, IsActive,
      Created, CreatedBy, Updated, UpdatedBy,
-     PP_Product_BOMLine_ID, M_Alternate_ID, KJS_BOMLineAlternate_UU)
+     PP_Product_BOMLine_ID, M_Alternate_ID, BOMType, KJS_BOMLineAlternate_UU)
 SELECT
     (SELECT COALESCE(MAX(KJS_BOMLineAlternate_ID), 0) FROM KJS_BOMLineAlternate)
         + row_number() OVER (ORDER BY l.pp_product_bomline_id),
     o.ad_client_id, o.ad_org_id, o.isactive,          -- preserve legacy IsActive (7 rows are 'N')
     o.created, o.createdby, o.updated, o.updatedby,    -- preserve legacy audit
-    l.pp_product_bomline_id, o.m_alternate_id, generate_uuid()
+    l.pp_product_bomline_id, o.m_alternate_id, o.bomtype, generate_uuid()
 FROM   m_product_bom_old o
 JOIN   pp_product_bomline l ON l.pp_product_bomline_uu::text = o.m_product_bom_uu
 WHERE  o.m_alternate_id IS NOT NULL
   AND  NOT EXISTS (SELECT 1 FROM KJS_BOMLineAlternate a
                    WHERE a.pp_product_bomline_id = l.pp_product_bomline_id);
 -- expect: INSERT 0 105587  (on a fresh run against polacup_v13)
+
+-- Fill BOMType on rows inserted before this column existed (idempotent no-op once set).
+-- Needed on environments already backfilled by an earlier version of this script.
+UPDATE KJS_BOMLineAlternate k
+SET    BOMType = o.bomtype
+FROM   m_product_bom_old o
+JOIN   pp_product_bomline l ON l.pp_product_bomline_uu::text = o.m_product_bom_uu
+WHERE  k.pp_product_bomline_id = l.pp_product_bomline_id
+  AND  o.m_alternate_id IS NOT NULL
+  AND  k.bomtype IS DISTINCT FROM o.bomtype;
 
 -- ---------------------------------------------------------------------------
 -- POST-CHECK  (final table count should equal the source_rows_with_alternate above)

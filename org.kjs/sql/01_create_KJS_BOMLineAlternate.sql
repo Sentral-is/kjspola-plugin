@@ -7,6 +7,14 @@
 -- One row per BOM line -> one Alternate (recipe variant).
 --   PP_Product_BOMLine_ID  -> pp_product_bomline (the v13 BOM line table)
 --   M_Alternate_ID         -> m_alternate        (the recipe-variant master)
+--   BOMType                -> original M_Product_BOM.BOMType string (the alternate
+--                             name as stored on BOM lines). Used by the JOB Phase
+--                             "Create lines from" (CreateFromProductionPlanLine),
+--                             which selects BOM by BOMType rather than by ID.
+--
+-- One table therefore serves both broken buttons:
+--   * Create_ProdComplete (LHP)      matches on M_Alternate_ID
+--   * Create lines from   (JOB Phase) matches on BOMType
 --
 -- NOTE ON DEPLOYMENT:
 --   * For a PROPER release, this table should be defined in the Application
@@ -33,6 +41,7 @@ CREATE TABLE IF NOT EXISTS KJS_BOMLineAlternate (
     UpdatedBy                NUMERIC(10)  NOT NULL,
     PP_Product_BOMLine_ID    NUMERIC(10)  NOT NULL,
     M_Alternate_ID           NUMERIC(10)  NOT NULL,
+    BOMType                  VARCHAR(40)  DEFAULT NULL,
     CONSTRAINT kjs_bomlinealternate_key   PRIMARY KEY (KJS_BOMLineAlternate_ID),
     CONSTRAINT kjs_bomlinealt_isactive    CHECK (IsActive IN ('Y','N')),
     -- one alternate per BOM line (matches the 6.2 line-level column semantics)
@@ -44,6 +53,13 @@ CREATE TABLE IF NOT EXISTS KJS_BOMLineAlternate (
         REFERENCES M_Alternate (M_Alternate_ID)
 );
 
+-- For deployments that created the table before BOMType existed (idempotent)
+ALTER TABLE KJS_BOMLineAlternate ADD COLUMN IF NOT EXISTS BOMType VARCHAR(40) DEFAULT NULL;
+
 -- Lookup used by POLA_JOBPHASE_CreateProduction (filter by alternate)
 CREATE INDEX IF NOT EXISTS kjs_bomlinealt_alt_idx
     ON KJS_BOMLineAlternate (M_Alternate_ID);
+
+-- Lookup used by CreateFromProductionPlanLine (filter by BOMType)
+CREATE INDEX IF NOT EXISTS kjs_bomlinealt_bomtype_idx
+    ON KJS_BOMLineAlternate (BOMType);
