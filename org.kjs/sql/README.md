@@ -25,6 +25,7 @@ directly.
 | Import (`Import BOM`) sets the alternate | `src/org/kjs/pola/process/ImportBOM.java` |
 | Add column + index | `sql/10_add_ppbomline_alternate.sql` |
 | One-time data migration | `sql/11_migrate_ppbomline_alternate.sql` |
+| Import-staging robustness (drop custom FK + UU default) | `sql/12_relax_iproductbom_import.sql` |
 | Dictionary: `AD_Column` M_Alternate_ID + `AD_Field` on Components tab | created in the UI (below); optionally packaged as a 2Pack |
 
 ## Deploy runbook (per environment)
@@ -48,8 +49,13 @@ PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
   -v ON_ERROR_STOP=1 -f org.kjs/sql/10_add_ppbomline_alternate.sql
 PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
   -v ON_ERROR_STOP=1 -f org.kjs/sql/11_migrate_ppbomline_alternate.sql
+PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
+  -v ON_ERROR_STOP=1 -f org.kjs/sql/12_relax_iproductbom_import.sql
 ```
-Confirm: `sql/11` pre-flight checks all `0`, then the row counts match.
+Confirm: `sql/11` pre-flight checks all `0`, then the row counts match. `sql/12` drops the custom FK
+on the `I_Product_BOM` staging table and gives its UU column a default so the import degrades
+gracefully (skip + flag bad rows) instead of blocking on missing masters. (Only needed on a DB that
+isn't a dump/restore of one already carrying these — the changes travel in the dump.)
 
 **2. Dictionary (iDempiere UI, System Administrator role)** — makes the field show and lets `ImportBOM`
 write it:

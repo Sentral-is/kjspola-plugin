@@ -2,6 +2,7 @@ package org.kjs.pola.process;
 
 import java.sql.ResultSet;
 import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.sql.Statement;
 import org.adempiere.exceptions.AdempiereException;
@@ -72,46 +73,68 @@ public class ImportBOM extends SvrProcess implements ImportProcess
             while (rs.next()) {
                 final X_I_Product_BOM imp = new X_I_Product_BOM(this.getCtx(), rs, this.get_TrxName());
                 final int I_Product_BOM_ID = imp.getI_Product_BOM_ID();
+
+                // Validate the row first and skip + flag (I_ErrorMsg) anything that can't resolve,
+                // rather than saveEx-throwing and aborting the whole import. Good rows still import;
+                // bad rows are reported and can be re-run after the data is fixed.
                 final int M_Product_ID = imp.getM_Product_ID();
-                final MProduct prod = new MProduct(this.getCtx(), M_Product_ID, this.get_TrxName());
-                MPPProductBOM header = new Query(this.getCtx(), MPPProductBOM.Table_Name, "M_Product_ID=?", this.get_TrxName())
-                        .setParameters(M_Product_ID)
-                        .setClient_ID()
-                        .first();
-                if (header == null) {
-                    header = new MPPProductBOM(this.getCtx(), 0, this.get_TrxName());
-                    header.setAD_Org_ID(imp.getAD_Org_ID());
-                    header.setM_Product_ID(M_Product_ID);
-                    header.setValue(prod.getValue());
-                    header.setName(prod.getName());
-                    header.saveEx(this.get_TrxName());
+                if (M_Product_ID <= 0) {
+                    this.markError(I_Product_BOM_ID, "Product not found: " + imp.get_ValueAsString("Value"));
+                    continue;
                 }
-                final MPPProductBOMLine bom = new MPPProductBOMLine(header);
-                bom.setM_Product_ID(imp.getM_ProductBOM_ID());
-                bom.setLine(imp.getLine());
-                bom.setDescription(imp.getDescription());
-                // I_Product_BOM.BOMType holds the client's alternate name, not a native ComponentType,
-                // so set a valid ComponentType and route the alternate to the custom column below.
-                bom.setComponentType(MPPProductBOMLine.COMPONENTTYPE_Component);
-                bom.setQtyBOM(imp.getBOMQty());
-                bom.setAD_Org_ID(imp.getAD_Org_ID());
-                bom.set_ValueNoCheck("CreatedBy", (Object)imp.getCreatedBy());
-                bom.set_ValueNoCheck("UpdatedBy", (Object)imp.getUpdatedBy());
-                // Phase 2: carry the alternate onto the canonical PP_Product_BOMLine.M_Alternate_ID
-                // column. Fail loudly if the AD column is not present (2Pack not applied yet) rather
-                // than silently dropping it (set_ValueOfColumn would just decline an unknown column).
-                final int altId = imp.get_ValueAsInt("M_Alternate_ID");
-                if (altId > 0 && !bom.set_ValueOfColumnReturningBoolean("M_Alternate_ID", (Object)altId)) {
-                    throw new AdempiereException("PP_Product_BOMLine.M_Alternate_ID not in dictionary - apply the 2Pack first");
+                final int M_ProductBOM_ID = imp.getM_ProductBOM_ID();
+                if (M_ProductBOM_ID <= 0) {
+                    this.markError(I_Product_BOM_ID, "BOM component not found: " + imp.get_ValueAsString("BOMValue"));
+                    continue;
                 }
-                prod.setIsBOM(true);
-                prod.saveEx(this.get_TrxName());
-                bom.saveEx(this.get_TrxName());
-                pstmt_setImported = (PreparedStatement)DB.prepareStatement("UPDATE I_Product_BOM SET I_IsImported='Y', M_Product_ID=?, Updated=SysDate, Processed='Y' WHERE I_Product_BOM_ID=?", this.get_TrxName());
-                pstmt_setImported.setInt(1, M_Product_ID);
-                pstmt_setImported.setInt(2, I_Product_BOM_ID);
-                no = pstmt_setImported.executeUpdate();
-                this.commitEx();
+                // Resolve the alternate by NAME (BOMType) for portability across databases; -1 means it
+                // was specified on the row but does not exist on this DB (flag it, do not import).
+                final int M_Alternate_ID = this.resolveAlternate(imp);
+                if (M_Alternate_ID < 0) {
+                    this.markError(I_Product_BOM_ID, "Alternate not found: " + imp.get_ValueAsString("BOMType"));
+                    continue;
+                }
+
+                try {
+                    final MProduct prod = new MProduct(this.getCtx(), M_Product_ID, this.get_TrxName());
+                    MPPProductBOM header = new Query(this.getCtx(), MPPProductBOM.Table_Name, "M_Product_ID=?", this.get_TrxName())
+                            .setParameters(M_Product_ID)
+                            .setClient_ID()
+                            .first();
+                    if (header == null) {
+                        header = new MPPProductBOM(this.getCtx(), 0, this.get_TrxName());
+                        header.setAD_Org_ID(imp.getAD_Org_ID());
+                        header.setM_Product_ID(M_Product_ID);
+                        header.setValue(prod.getValue());
+                        header.setName(prod.getName());
+                        header.saveEx(this.get_TrxName());
+                    }
+                    final MPPProductBOMLine bom = new MPPProductBOMLine(header);
+                    bom.setM_Product_ID(M_ProductBOM_ID);
+                    bom.setLine(imp.getLine());
+                    bom.setDescription(imp.getDescription());
+                    // I_Product_BOM.BOMType holds the client's alternate name, not a native
+                    // ComponentType, so set a valid ComponentType and route the alternate to the
+                    // custom column below.
+                    bom.setComponentType(MPPProductBOMLine.COMPONENTTYPE_Component);
+                    bom.setQtyBOM(imp.getBOMQty());
+                    bom.setAD_Org_ID(imp.getAD_Org_ID());
+                    bom.set_ValueNoCheck("CreatedBy", (Object)imp.getCreatedBy());
+                    bom.set_ValueNoCheck("UpdatedBy", (Object)imp.getUpdatedBy());
+                    if (M_Alternate_ID > 0 && !bom.set_ValueOfColumnReturningBoolean("M_Alternate_ID", (Object)M_Alternate_ID)) {
+                        throw new AdempiereException("PP_Product_BOMLine.M_Alternate_ID not in dictionary - apply the 2Pack first");
+                    }
+                    prod.setIsBOM(true);
+                    prod.saveEx(this.get_TrxName());
+                    bom.saveEx(this.get_TrxName());
+                    DB.executeUpdate("UPDATE I_Product_BOM SET I_IsImported='Y', I_ErrorMsg=NULL, M_Product_ID=?, Updated=SysDate, Processed='Y' WHERE I_Product_BOM_ID=?",
+                            new Object[] { M_Product_ID, I_Product_BOM_ID }, false, this.get_TrxName());
+                    this.commitEx();
+                    ++no;
+                } catch (Exception e) {
+                    this.rollback();
+                    this.markError(I_Product_BOM_ID, e.getMessage());
+                }
             }
         }
         finally {
@@ -132,6 +155,35 @@ public class ImportBOM extends SvrProcess implements ImportProcess
         return "";
     }
     
+    /**
+     * Resolve the alternate for an import row. Prefer the name (BOMType) so the import is portable
+     * across databases where the numeric ids differ; fall back to a supplied M_Alternate_ID.
+     * @return >0 resolved M_Alternate_ID; 0 = no alternate on the row; -1 = specified but not found.
+     */
+    private int resolveAlternate(final X_I_Product_BOM imp) {
+        final String name = imp.get_ValueAsString("BOMType");
+        if (name != null && name.trim().length() > 0) {
+            final int id = DB.getSQLValue(this.get_TrxName(),
+                    "SELECT M_Alternate_ID FROM M_Alternate WHERE Name=? AND AD_Client_ID=?",
+                    name.trim(), imp.getAD_Client_ID());
+            return (id > 0) ? id : -1;
+        }
+        final int id = imp.get_ValueAsInt("M_Alternate_ID");
+        if (id > 0) {
+            final int found = DB.getSQLValue(this.get_TrxName(),
+                    "SELECT M_Alternate_ID FROM M_Alternate WHERE M_Alternate_ID=?", id);
+            return (found > 0) ? id : -1;
+        }
+        return 0;
+    }
+
+    /** Flag an import row with an error message and leave it un-imported, without aborting the run. */
+    private void markError(final int I_Product_BOM_ID, final String msg) throws SQLException {
+        DB.executeUpdate("UPDATE I_Product_BOM SET I_ErrorMsg=?, Updated=SysDate WHERE I_Product_BOM_ID=?",
+                new Object[] { (msg == null ? "Import error" : msg), I_Product_BOM_ID }, false, this.get_TrxName());
+        this.commitEx();
+    }
+
     public String getImportTableName() {
         return "I_Product_BOM";
     }
