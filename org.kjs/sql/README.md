@@ -57,16 +57,35 @@ on the `I_Product_BOM` staging table and gives its UU column a default so the im
 gracefully (skip + flag bad rows) instead of blocking on missing masters. (Only needed on a DB that
 isn't a dump/restore of one already carrying these — the changes travel in the dump.)
 
-**2. Dictionary (iDempiere UI, System Administrator role)** — makes the field show and lets `ImportBOM`
-write it:
-- *Table and Column* → table `PP_Product_BOMLine` → new **Column**: System Element `M_Alternate_ID`,
-  Reference **Table Direct**, Length `10`, Entity Type **User maintained** → Save → **Synchronize Column**.
-- *Window, Tab & Field* → Window `Product` → tab `Components` → new **Field**: Column `M_Alternate_ID`,
-  **Displayed** + **Show in Grid** → Save.
+**2. Dictionary (iDempiere UI, System Administrator role) — MANDATORY.** Run this **after** step 1
+(the physical column already exists, so Synchronize Column just no-ops and registers the metadata).
+Required for the Alternate to display/edit on BOM lines **and** for `ImportBOM` (it writes the
+alternate through the registered column and fails loudly if the column isn't in the dictionary). The
+two raw-SQL buttons work with just the physical column, but everything else needs this step.
 
-> The `AD_Column` must exist before **Import BOM** runs — the new `ImportBOM` writes the alternate via
-> the registered column and fails loudly if it is missing. The two buttons only need the physical
-> column + data (step 1).
+*2a. Create the column* — open **Table and Column** (top search box):
+1. **Table** tab → Find → `DB Table Name = PP_Product_BOMLine` → open it.
+2. **Column** child tab → **New** (`+`).
+3. **System Element**: click its lookup, search **`M_Alternate_ID`** (not "alter") and pick the row
+   `DB Column Name = M_Alternate_ID`, `Name = Alternate` (element id `1000287`). *Do not pick
+   `AlternateType` or `alternate` — those are different text elements.* Selecting it auto-fills the
+   greyed-out **DB Column Name** = `M_Alternate_ID`.
+4. **Reference**: `Table Direct` — **not** `Table Direct (UU)` (UU expects a uuid column; ours is numeric).
+5. **Length** `10`, **Entity Type** `User maintained`, leave **Mandatory** unchecked → **Save**.
+6. Click **Synchronize Column** → **OK** (leave Date From empty, Run as Job off). On a DB where `sql/10`
+   already ran it reports "already exists" / no change — that's expected.
+
+*2b. Show it on the Components tab* — open **Window, Tab & Field**:
+1. **Window** tab → `Name = Product`.
+2. **Tab** tab → select **Components** (table `PP_Product_BOMLine`).
+3. **Field** tab → **New** → **Column** = `M_Alternate_ID_Alternate`, check **Displayed** + **Show in
+   Grid**, **Name** = `Alternate` → **Save**. (Sequence auto-fills ~110; fine, or lower it to sit near
+   Product/Line — cosmetic.)
+4. *(Optional)* repeat 2b for the **Bill of Materials and Formula** window's Components tab if your team
+   edits BOMs there too.
+
+Log out/in (or reopen the Product window) → Product → **Components** should now show the **Alternate**
+field.
 
 **3. Deploy the plugin bundle** — build (PDE Export), **bump the bundle version**, drop into `plugins/`,
 restart.
