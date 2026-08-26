@@ -97,15 +97,21 @@ public class CopyOrder extends SvrProcess
 			throw new IllegalStateException("Could not create new Order");
 		//
 		
-		// Move Attachment from the Form Order to the new Sales Order.
-		// iDempiere 13 resolves attachments by Record_ID AND Record_UU, so updating
-		// Record_ID alone (as before) orphans the row. Blank Record_UU and let
-		// MAttachment.beforeSave repopulate it from the new Record_ID (portable, no uuid cast).
-		MAttachment attch = MAttachment.get(getCtx(), MOrder.Table_ID, from.getC_Order_ID(), get_TrxName());
-		if(attch != null) {
-			attch.setRecord_ID(newOrder.getC_Order_ID());
-			attch.setRecord_UU(null);
-			attch.saveEx();
+		// Copy the Form Order's attachment (with its file contents) onto the new Sales Order.
+		// A record-level "move" (updating Record_ID/Record_UU on the existing row) is unsafe:
+		// attachments are stored in AD_Attachment.BinaryData, and MAttachment.afterSave re-
+		// serializes the in-memory entries on every save. When the entries are not materialized,
+		// that re-serialization writes an empty blob and destroys the file. Copying the entries
+		// forces the bytes to load (getEntryCount/getEntry) and writes a fresh, valid attachment
+		// on the SO, leaving the Form Order's copy intact.
+		MAttachment fromAttach = MAttachment.get(getCtx(), MOrder.Table_ID, from.getC_Order_ID(), get_TrxName());
+		if (fromAttach != null && fromAttach.getEntryCount() > 0) {
+			MAttachment toAttach = new MAttachment(getCtx(), MOrder.Table_ID, newOrder.getC_Order_ID(), get_TrxName());
+			for (int i = 0; i < fromAttach.getEntryCount(); i++) {
+				toAttach.addEntry(fromAttach.getEntry(i));
+			}
+			toAttach.setTextMsg(fromAttach.getTextMsg());
+			toAttach.saveEx();
 		}
 		if (p_IsCloseDocument)
 		{
