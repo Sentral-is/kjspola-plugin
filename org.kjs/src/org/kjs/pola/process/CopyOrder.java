@@ -25,7 +25,6 @@ import org.compiere.model.MDocType;
 import org.compiere.model.MOrder;
 import org.compiere.process.ProcessInfoParameter;
 import org.compiere.process.SvrProcess;
-import org.compiere.util.DB;
 
 /**
  *	Copy Order and optionally close
@@ -98,10 +97,15 @@ public class CopyOrder extends SvrProcess
 			throw new IllegalStateException("Could not create new Order");
 		//
 		
-		// Move Attachment
-		MAttachment attch = MAttachment.get(from.getCtx(), MOrder.Table_ID, from.getC_Order_ID());
+		// Move Attachment from the Form Order to the new Sales Order.
+		// iDempiere 13 resolves attachments by Record_ID AND Record_UU, so updating
+		// Record_ID alone (as before) orphans the row. Blank Record_UU and let
+		// MAttachment.beforeSave repopulate it from the new Record_ID (portable, no uuid cast).
+		MAttachment attch = MAttachment.get(getCtx(), MOrder.Table_ID, from.getC_Order_ID(), get_TrxName());
 		if(attch != null) {
-			DB.executeUpdate("update ad_attachment set record_id = ? where ad_attachment_id =" + attch.getAD_Attachment_ID(), newOrder.getC_Order_ID(), get_TrxName());
+			attch.setRecord_ID(newOrder.getC_Order_ID());
+			attch.setRecord_UU(null);
+			attch.saveEx();
 		}
 		if (p_IsCloseDocument)
 		{
