@@ -126,3 +126,20 @@ PGPASSWORD=adempiere psql -h <host> -p <port> -U adempiere -d <db> \
 Trade-off: renaming ends easy rollback — the old bundle looks for `KJS_BOMLineAlternate` by its
 original name, so you'd rename it back before redeploying the old bundle. Verified safe to drop:
 nothing references it (no plugin code, not in the dictionary, no views/functions/FKs).
+
+---
+
+## Unrelated — Aging due-date fix (`sql/14`)
+
+`sql/14_fix_aging_duedate_datecollect.sql` is a **separate, DB-only** fix (no plugin Java/dictionary
+change) for the **Aging** and **Open Items** reports. The 6.2 → 13 upgrade recreated the stock
+`RV_OpenItem` / `RV_OpenItemToDate` views, which compute the invoice due date as `DateInvoiced +
+term`; PT PPJ's rule is **`DateCollect + term`** (matching their custom Jasper "Report Aging
+(AR/AP)"). The script re-applies the customization via `CREATE OR REPLACE VIEW`, using
+`COALESCE(datecollect, dateinvoiced)` so invoices without a collect date keep the stock behavior.
+Self-documenting header + built-in verification queries inside the file; idempotent.
+
+**Re-apply after any core upgrade** — a migration that recreates those views reverts this (and can
+change their column list, so re-diff against the fresh `pg_get_viewdef` before re-running). Run once
+per environment as `adempiere` (prod-via-restore inherits it; a separately-running VPS needs it
+applied directly).
