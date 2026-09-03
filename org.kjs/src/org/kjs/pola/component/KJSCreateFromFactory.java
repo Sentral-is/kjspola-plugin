@@ -1,5 +1,6 @@
 package org.kjs.pola.component;
 
+import org.kjs.pola.form.KJSCreateFromStatementUI;
 import org.kjs.pola.form.WCreateFromShipmentUI;
 import org.kjs.pola.form.WCreateFromReceiptUI;
 import org.kjs.pola.form.WCreateFromInvoiceUI;
@@ -44,7 +45,12 @@ public class KJSCreateFromFactory implements ICreateFromFactory
         if (tableName.equals("C_ARProInv")) {
             return (ICreateFrom)new WCreateFromProformaInv(mTab);
         }
-        
+
+        // Bank/Cash Statement: restore 6.2 picker behavior (include Reversed/Voided payments)
+        if (tableName.equals("C_BankStatement")) {
+            return (ICreateFrom)new KJSCreateFromStatementUI(mTab);
+        }
+
         return null;
     }
 }
