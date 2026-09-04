@@ -6,6 +6,7 @@ import org.adempiere.webui.factory.IFormFactory;
 import org.adempiere.webui.panel.ADForm;
 import org.adempiere.webui.panel.IFormController;
 import org.compiere.util.CLogger;
+import org.kjs.pola.form.KJSWAllocation;
 
 public class KJSFormFactory implements IFormFactory
 {
@@ -16,6 +17,13 @@ public class KJSFormFactory implements IFormFactory
     }
     
     public ADForm newFormInstance(final String formName) {
+        // Payment Allocation: core form + a read-only Date Collect column on the Invoice grid.
+        if (formName.equals("org.compiere.apps.form.VAllocation")) {
+            final KJSWAllocation controller = new KJSWAllocation();
+            final ADForm adForm = controller.getForm();
+            adForm.setICustomForm((IFormController)controller);
+            return adForm;
+        }
         if (formName.startsWith("org.kjs.jembo.form")) {
             Object form = null;
             Class<?> clazz = null;
