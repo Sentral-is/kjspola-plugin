@@ -14,7 +14,6 @@ import org.compiere.process.ProcessInfoParameter;
 import org.compiere.process.SvrProcess;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
-import org.kjs.pola.model.X_KJS_ProductPhaseLine;
 import org.kjs.pola.model.X_KJS_ProductionPlan;
 import org.kjs.pola.model.X_KJS_ProductionPlanLine;
 import org.kjs.pola.model.X_M_Alternate;
@@ -110,46 +109,49 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 		
 		
 		StringBuilder SQLGetPhase = new StringBuilder();
-		SQLGetPhase.append("SELECT KJS_ProductPhaseLine_ID ");
-		SQLGetPhase.append(" FROM KJS_ProductPhaseLine ");
-		SQLGetPhase.append(" WHERE KJS_ProductPhase_ID = (");
-		SQLGetPhase.append(" 	SELECT KJS_ProductPhase_ID ");
-		SQLGetPhase.append(" 	FROM KJS_ProductPhase ");
-		SQLGetPhase.append(" 	WHERE M_Product_ID = "+M_Product_ID+")");
-		SQLGetPhase.append(" AND M_Alternate_ID = "+M_Alternate_ID);
+		SQLGetPhase.append("SELECT ppl.Line, ppl.KJS_Phase_ID, ppl.M_Product_ID, prod.Value");
+		SQLGetPhase.append(" FROM KJS_ProductPhaseLine ppl");
+		SQLGetPhase.append(" INNER JOIN KJS_ProductPhase pp ON pp.KJS_ProductPhase_ID = ppl.KJS_ProductPhase_ID");
+		SQLGetPhase.append(" LEFT JOIN M_Product prod ON prod.M_Product_ID = ppl.M_Product_ID");
+		SQLGetPhase.append(" WHERE pp.M_Product_ID = ?");
+		SQLGetPhase.append(" AND ppl.M_Alternate_ID = ?");
 		
 		MProduct prodKJPSPP = new MProduct(getCtx(), KJSPP.getM_Product_ID(), get_TrxName());
+		String parentValue = prodKJPSPP.getValue();
+		if (parentValue == null)
+			parentValue = "";
+		X_M_Alternate alternate = new X_M_Alternate(getCtx(), M_Alternate_ID, get_TrxName());
+		BigDecimal up = alternate.getKJS_CavityJumlah();
 		
 	    PreparedStatement pstmt = null;
 	    ResultSet rs = null;
 	    	try {
-	            pstmt = (PreparedStatement)DB.prepareStatement(SQLGetPhase.toString(), (String)null);
+	            pstmt = (PreparedStatement)DB.prepareStatement(SQLGetPhase.toString(), get_TrxName());
+	            pstmt.setInt(1, M_Product_ID);
+	            pstmt.setInt(2, M_Alternate_ID);
 	       
 	            rs = pstmt.executeQuery();
 	            while (rs.next()) {
 	            	
-	            	int KJS_ProductPhaseLine_ID = rs.getInt(1);
-	            	
-	            	X_KJS_ProductPhaseLine phaseLine = new X_KJS_ProductPhaseLine(getCtx(), KJS_ProductPhaseLine_ID, get_TrxName()); 
-	            	MProduct prodPhaseLine = new MProduct(getCtx(), phaseLine.getM_Product_ID(), get_TrxName());
-	            	X_M_Alternate alternate = new X_M_Alternate(getCtx(), M_Alternate_ID, get_TrxName());
-	            	BigDecimal up = alternate.getKJS_CavityJumlah();
-	            	
-	            	
-	            	if(phaseLine != null) {
+	            	int lineNo = rs.getInt(1);
+	            	int KJS_Phase_ID = rs.getInt(2);
+	            	int phaseProductId = rs.getInt(3);
+	            	String phaseProductValue = rs.getString(4);
+	            	if (phaseProductValue == null)
+	            		phaseProductValue = "";
 	            		
 	            		if(alternate.get_Value("AlternateType").toString().toUpperCase().equals("OF")) {
 	            		
 		            		X_KJS_ProductionPlanLine JobPhase = new X_KJS_ProductionPlanLine(getCtx(), 0, get_TrxName());
 		            		JobPhase.setKJS_ProductionPlan_ID(Record_ID);
 		            		JobPhase.setAD_Org_ID(KJSPP.getAD_Org_ID());
-		            		JobPhase.setLine(phaseLine.getLine());
-		            		JobPhase.setKJS_Phase_ID(phaseLine.getKJS_Phase_ID());
+		            		JobPhase.setLine(lineNo);
+		            		JobPhase.setKJS_Phase_ID(KJS_Phase_ID);
 		            		JobPhase.set_CustomColumn("M_Alternate_ID", M_Alternate_ID);
-		            		JobPhase.setM_Product_ID(phaseLine.getM_Product_ID());
+		            		JobPhase.setM_Product_ID(phaseProductId);
 		            		JobPhase.set_CustomColumn("ProductionQty", KJSPP.getQtyEntered());
 		            		            		
-		            		if(phaseLine.getM_Product_ID() == KJSPP.getM_Product_ID() || prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-BLC")) {
+		            		if(phaseProductId == KJSPP.getM_Product_ID() || phaseProductValue.equals(parentValue+"-BLC")) {
 		            			JobPhase.set_CustomColumn("QtySheet",Env.ONE);
 			            		JobPhase.setBOMQty( KJSPP.getQtyEntered());
 		            		}else {
@@ -162,13 +164,13 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 	            			X_KJS_ProductionPlanLine JobPhase = new X_KJS_ProductionPlanLine(getCtx(), 0, get_TrxName());
 		            		JobPhase.setKJS_ProductionPlan_ID(Record_ID);
 		            		JobPhase.setAD_Org_ID(KJSPP.getAD_Org_ID());
-		            		JobPhase.setLine(phaseLine.getLine());
-		            		JobPhase.setKJS_Phase_ID(phaseLine.getKJS_Phase_ID());
+		            		JobPhase.setLine(lineNo);
+		            		JobPhase.setKJS_Phase_ID(KJS_Phase_ID);
 		            		JobPhase.set_CustomColumn("M_Alternate_ID", M_Alternate_ID);
-		            		JobPhase.setM_Product_ID(phaseLine.getM_Product_ID());
+		            		JobPhase.setM_Product_ID(phaseProductId);
 		            		JobPhase.set_CustomColumn("ProductionQty", KJSPP.getQtyEntered());
 		            		            		
-		            		if(prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-RCF")) {
+		            		if(phaseProductValue.equals(parentValue+"-RCF")) {
 		            			JobPhase.set_CustomColumn("QtySheet",up);
 		            			
 		            			BigDecimal gearUp = alternate.getKJS_CavityGearFeed();
@@ -176,7 +178,7 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 		            			BigDecimal a = KJSPP.getQtyEntered().divide(up,2,RoundingMode.HALF_UP);
 		            			BigDecimal b = gearCons.multiply(gearUp);
 			            		JobPhase.setBOMQty( a.multiply(b));
-		            		}if(prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-RCS")) {
+		            		}if(phaseProductValue.equals(parentValue+"-RCS")) {
 		            			JobPhase.set_CustomColumn("QtySheet",up);
 		            			
 		            			BigDecimal gearUp = alternate.getKJS_CavityGearFeed();
@@ -187,7 +189,7 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 			            		BigDecimal d = (BigDecimal) alternate.get_Value("SlittingUp");
 		            			JobPhase.setBOMQty( c.multiply(d));		            		
 			            		
-		            		}else if(phaseLine.getM_Product_ID() == KJSPP.getM_Product_ID() || prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-BLC")) {
+		            		}else if(phaseProductId == KJSPP.getM_Product_ID() || phaseProductValue.equals(parentValue+"-BLC")) {
 		            			JobPhase.set_CustomColumn("QtySheet",Env.ONE);
 			            		JobPhase.setBOMQty( KJSPP.getQtyEntered());
 		            		}else {
@@ -200,13 +202,13 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 	            			X_KJS_ProductionPlanLine JobPhase = new X_KJS_ProductionPlanLine(getCtx(), 0, get_TrxName());
 		            		JobPhase.setKJS_ProductionPlan_ID(Record_ID);
 		            		JobPhase.setAD_Org_ID(KJSPP.getAD_Org_ID());
-		            		JobPhase.setLine(phaseLine.getLine());
-		            		JobPhase.setKJS_Phase_ID(phaseLine.getKJS_Phase_ID());
+		            		JobPhase.setLine(lineNo);
+		            		JobPhase.setKJS_Phase_ID(KJS_Phase_ID);
 		            		JobPhase.set_CustomColumn("M_Alternate_ID", M_Alternate_ID);
-		            		JobPhase.setM_Product_ID(phaseLine.getM_Product_ID());
+		            		JobPhase.setM_Product_ID(phaseProductId);
 		            		JobPhase.set_CustomColumn("ProductionQty", KJSPP.getQtyEntered());
 		            		            		
-		            		if(prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-RCF")) {
+		            		if(phaseProductValue.equals(parentValue+"-RCF")) {
 		            			JobPhase.set_CustomColumn("QtySheet",up);
 		            			
 		            			BigDecimal gearUp = alternate.getKJS_CavityGearFeed();
@@ -214,7 +216,7 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 		            			BigDecimal a = KJSPP.getQtyEntered().divide(up,2,RoundingMode.HALF_UP);
 		            			BigDecimal b = gearCons.multiply(gearUp);
 			            		JobPhase.setBOMQty( a.multiply(b));
-		            		}else if(phaseLine.getM_Product_ID() == KJSPP.getM_Product_ID() || prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-BLC")) {
+		            		}else if(phaseProductId == KJSPP.getM_Product_ID() || phaseProductValue.equals(parentValue+"-BLC")) {
 		            			JobPhase.set_CustomColumn("QtySheet",Env.ONE);
 			            		JobPhase.setBOMQty( KJSPP.getQtyEntered());
 		            		}else {
@@ -227,13 +229,13 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 	            			X_KJS_ProductionPlanLine JobPhase = new X_KJS_ProductionPlanLine(getCtx(), 0, get_TrxName());
 		            		JobPhase.setKJS_ProductionPlan_ID(Record_ID);
 		            		JobPhase.setAD_Org_ID(KJSPP.getAD_Org_ID());
-		            		JobPhase.setLine(phaseLine.getLine());
-		            		JobPhase.setKJS_Phase_ID(phaseLine.getKJS_Phase_ID());
+		            		JobPhase.setLine(lineNo);
+		            		JobPhase.setKJS_Phase_ID(KJS_Phase_ID);
 		            		JobPhase.set_CustomColumn("M_Alternate_ID", M_Alternate_ID);
-		            		JobPhase.setM_Product_ID(phaseLine.getM_Product_ID());
+		            		JobPhase.setM_Product_ID(phaseProductId);
 		            		JobPhase.set_CustomColumn("ProductionQty", KJSPP.getQtyEntered());
 		            		            		
-		            		if(prodPhaseLine.getValue().equals(prodKJPSPP.getValue()+"-RCF")) {
+		            		if(phaseProductValue.equals(parentValue+"-RCF")) {
 		            			JobPhase.set_CustomColumn("QtySheet",up);
 		            			
 		            			BigDecimal gearUp = alternate.getKJS_CavityGearFeed();
@@ -241,7 +243,7 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 		            			BigDecimal a = KJSPP.getQtyEntered().divide(up,2,RoundingMode.HALF_UP);
 		            			BigDecimal b = gearCons.multiply(gearUp);
 			            		JobPhase.setBOMQty( a.multiply(b));
-		            		}else if(phaseLine.getM_Product_ID() == KJSPP.getM_Product_ID()) {
+		            		}else if(phaseProductId == KJSPP.getM_Product_ID()) {
 		            			JobPhase.set_CustomColumn("QtySheet",Env.ONE);
 			            		JobPhase.setBOMQty( KJSPP.getQtyEntered());
 		            		}else {
@@ -255,18 +257,16 @@ public void createPhase(int M_Product_ID, int M_Alternate_ID,X_KJS_ProductionPla
 	            			X_KJS_ProductionPlanLine JobPhase = new X_KJS_ProductionPlanLine(getCtx(), 0, get_TrxName());
 		            		JobPhase.setKJS_ProductionPlan_ID(Record_ID);
 		            		JobPhase.setAD_Org_ID(KJSPP.getAD_Org_ID());
-		            		JobPhase.setLine(phaseLine.getLine());
-		            		JobPhase.setKJS_Phase_ID(phaseLine.getKJS_Phase_ID());
+		            		JobPhase.setLine(lineNo);
+		            		JobPhase.setKJS_Phase_ID(KJS_Phase_ID);
 		            		JobPhase.set_CustomColumn("M_Alternate_ID", M_Alternate_ID);
-		            		JobPhase.setM_Product_ID(phaseLine.getM_Product_ID());
+		            		JobPhase.setM_Product_ID(phaseProductId);
 		            		JobPhase.set_CustomColumn("ProductionQty", KJSPP.getQtyEntered());
 		            		JobPhase.set_CustomColumn("QtySheet",up);
 			            	JobPhase.setBOMQty( KJSPP.getQtyEntered().divide(up,2,RoundingMode.HALF_UP));	            		
 		            		JobPhase.saveEx();
 	            			
 	            		}
-	            		
-	            	}
 	            	
 	            	
 	            }

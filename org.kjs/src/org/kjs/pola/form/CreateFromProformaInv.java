@@ -4,6 +4,8 @@ import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Vector;
 import java.util.logging.Level;
 
@@ -13,9 +15,6 @@ import org.compiere.apps.IStatusBar;
 import org.compiere.grid.CreateFrom;
 import org.compiere.minigrid.IMiniTable;
 import org.compiere.model.GridTab;
-import org.compiere.model.MOrderLine;
-import org.compiere.model.MProduct;
-import org.compiere.model.MUOM;
 import org.compiere.util.CLogger;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
@@ -60,59 +59,96 @@ public class CreateFromProformaInv extends CreateFrom{
 	public boolean save(IMiniTable miniTable, String trxName) {
 		
 		int C_ARProInv_ID = Env.getContextAsInt(Env.getCtx(), p_WindowNo, "C_ARProInv_ID");
-		int C_Order_ID = 0;
-		X_C_ARProInv Inv = new X_C_ARProInv(null, C_ARProInv_ID, trxName);
-	
-		for (int i = 0; i < miniTable.getRowCount(); i++){
-			
+		X_C_ARProInv Inv = new X_C_ARProInv(Env.getCtx(), C_ARProInv_ID, trxName);
+
+		ArrayList<Integer> selectedIds = new ArrayList<Integer>();
+		HashMap<Integer, BigDecimal> qtyByOrderLine = new HashMap<Integer, BigDecimal>();
+		for (int i = 0; i < miniTable.getRowCount(); i++) {
 			if (((Boolean)miniTable.getValueAt(i, 0)).booleanValue()) {
-				
-				KeyNamePair OrderLinepair = (KeyNamePair) miniTable.getValueAt(i, 1); 	
-				final int C_OrderLine_ID = OrderLinepair.getKey();
-//				KeyNamePair prodPair = (KeyNamePair) miniTable.getValueAt(i, 2);
-//				KeyNamePair UOMPair = (KeyNamePair) miniTable.getValueAt(i, 3);
-				BigDecimal QtyOrdered = (BigDecimal) miniTable.getValueAt(i, 4);
-//				BigDecimal UnitPrice = (BigDecimal) miniTable.getValueAt(i, 7);
-				
-				
-				MOrderLine ordLine= new MOrderLine(Env.getCtx(), C_OrderLine_ID, null);
-				C_Order_ID = ordLine.getC_Order_ID();
-				X_C_ARProInvLine invLine = new X_C_ARProInvLine(Env.getCtx(), 0, null);
-				
-				invLine.setAD_Org_ID(ordLine.getAD_Org_ID());
+				KeyNamePair OrderLinepair = (KeyNamePair) miniTable.getValueAt(i, 1);
+				Integer C_OrderLine_ID = Integer.valueOf(OrderLinepair.getKey());
+				selectedIds.add(C_OrderLine_ID);
+				qtyByOrderLine.put(C_OrderLine_ID, (BigDecimal) miniTable.getValueAt(i, 4));
+			}
+		}
+		if (selectedIds.isEmpty()) {
+			return true;
+		}
+
+		StringBuilder sql = new StringBuilder();
+		sql.append("SELECT ol.C_OrderLine_ID, ol.C_Order_ID, ol.AD_Org_ID, ol.C_Charge_ID, ol.M_Product_ID,");
+		sql.append(" COALESCE(p.C_UOM_ID, ol.C_UOM_ID), ol.Line, ol.C_Tax_ID, ol.PriceEntered");
+		sql.append(" FROM C_OrderLine ol");
+		sql.append(" LEFT JOIN M_Product p ON p.M_Product_ID = ol.M_Product_ID");
+		sql.append(" WHERE ol.C_OrderLine_ID IN (");
+		for (int i = 0; i < selectedIds.size(); i++) {
+			if (i > 0)
+				sql.append(",");
+			sql.append("?");
+		}
+		sql.append(")");
+
+		int C_Order_ID = 0;
+		PreparedStatement pstmt = null;
+		ResultSet rs = null;
+		try {
+			pstmt = DB.prepareStatement(sql.toString(), trxName);
+			for (int i = 0; i < selectedIds.size(); i++) {
+				pstmt.setInt(i + 1, selectedIds.get(i).intValue());
+			}
+			rs = pstmt.executeQuery();
+			while (rs.next()) {
+				int C_OrderLine_ID = rs.getInt(1);
+				C_Order_ID = rs.getInt(2);
+				int AD_Org_ID = rs.getInt(3);
+				int C_Charge_ID = rs.getInt(4);
+				int M_Product_ID = rs.getInt(5);
+				int C_UOM_ID = rs.getInt(6);
+				int lineNo = rs.getInt(7);
+				int C_Tax_ID = rs.getInt(8);
+				BigDecimal PriceEntered = rs.getBigDecimal(9);
+				BigDecimal QtyOrdered = qtyByOrderLine.get(Integer.valueOf(C_OrderLine_ID));
+				if (QtyOrdered == null)
+					QtyOrdered = Env.ZERO;
+				if (PriceEntered == null)
+					PriceEntered = Env.ZERO;
+
+				X_C_ARProInvLine invLine = new X_C_ARProInvLine(Env.getCtx(), 0, trxName);
+				invLine.setAD_Org_ID(AD_Org_ID);
 				invLine.setC_ARProInv_ID(Inv.getC_ARProInv_ID());
 
-				if (ordLine.getC_Charge_ID() > 0) {
-					invLine.setC_Charge_ID(ordLine.getC_Charge_ID());
+				if (C_Charge_ID > 0) {
+					invLine.setC_Charge_ID(C_Charge_ID);
 				}
 
-				if (ordLine.getM_Product_ID() > 0) {
-					invLine.setM_Product_ID(ordLine.getM_Product_ID());
-					MProduct prod = new MProduct(Env.getCtx(), ordLine.getM_Product_ID(), null);
-					invLine.setC_UOM_ID(prod.getC_UOM_ID());
+				if (M_Product_ID > 0) {
+					invLine.setM_Product_ID(M_Product_ID);
+					invLine.setC_UOM_ID(C_UOM_ID);
 				}
 
-				invLine.setLine(ordLine.getLine());
-				invLine.setC_Tax_ID(ordLine.getC_Tax_ID());
+				invLine.setLine(lineNo);
+				invLine.setC_Tax_ID(C_Tax_ID);
 				invLine.setC_OrderLine_ID(C_OrderLine_ID);
-
 				invLine.setQtyEntered(QtyOrdered);
-				invLine.setPriceEntered(ordLine.getPriceEntered());
-				invLine.setPriceActual(ordLine.getPriceEntered());
-				invLine.setLineNetAmt(invLine.getPriceEntered().multiply(QtyOrdered));
+				invLine.setPriceEntered(PriceEntered);
+				invLine.setPriceActual(PriceEntered);
+				invLine.setLineNetAmt(PriceEntered.multiply(QtyOrdered));
 				invLine.saveEx();
-				
 			}
-			
-			if(Inv.get_ValueAsInt("C_Order_ID") <= 0) {
-				
-				Inv.set_CustomColumn("C_Order_ID", C_Order_ID);
-				Inv.saveEx();
-				
-			}
-			
+		} catch (SQLException e) {
+			log.log(Level.SEVERE, sql.toString(), e);
+			return false;
+		} finally {
+			DB.close(rs, pstmt);
+			rs = null;
+			pstmt = null;
 		}
-		
+
+		if (Inv.get_ValueAsInt("C_Order_ID") <= 0 && C_Order_ID > 0) {
+			Inv.set_CustomColumn("C_Order_ID", C_Order_ID);
+			Inv.saveEx();
+		}
+
 		return true;
 	}
 	
@@ -138,9 +174,14 @@ public class CreateFromProformaInv extends CreateFrom{
 
 		Vector<Vector<Object>> data = new Vector<Vector<Object>>();
 		StringBuilder SQLGetPRDetail = new StringBuilder();
-		SQLGetPRDetail.append("SELECT Line,M_Product_ID,C_UOM_ID,QtyOrdered,PriceActual,LineNetAmt,C_OrderLine_ID");
-		SQLGetPRDetail.append(" FROM C_OrderLine ");
-		SQLGetPRDetail.append(" WHERE C_Order_ID = ? ");
+		SQLGetPRDetail.append("SELECT ol.Line, ol.M_Product_ID, COALESCE(p.Name, ch.Name),");
+		SQLGetPRDetail.append(" ol.C_UOM_ID, u.UOMSymbol, ol.QtyOrdered, ol.PriceActual, ol.C_OrderLine_ID");
+		SQLGetPRDetail.append(" FROM C_OrderLine ol");
+		SQLGetPRDetail.append(" LEFT JOIN M_Product p ON p.M_Product_ID = ol.M_Product_ID");
+		SQLGetPRDetail.append(" LEFT JOIN C_Charge ch ON ch.C_Charge_ID = ol.C_Charge_ID");
+		SQLGetPRDetail.append(" LEFT JOIN C_UOM u ON u.C_UOM_ID = ol.C_UOM_ID");
+		SQLGetPRDetail.append(" WHERE ol.C_Order_ID = ?");
+		SQLGetPRDetail.append(" ORDER BY ol.Line");
 		
 		
 		if (log.isLoggable(Level.FINER)) log.finer(SQLGetPRDetail.toString());
@@ -155,21 +196,25 @@ public class CreateFromProformaInv extends CreateFrom{
 			{
 				Vector<Object> line = new Vector<Object>();
 				line.add(Boolean.FALSE);           //  0-Selection
-				Integer lineNo = rs.getInt(1);
-				BigDecimal qty = rs.getBigDecimal(4);
-				BigDecimal price = rs.getBigDecimal(5);
+				Integer lineNo = Integer.valueOf(rs.getInt(1));
+				BigDecimal qty = rs.getBigDecimal(6);
+				BigDecimal price = rs.getBigDecimal(7);
 				
 				
-				KeyNamePair LinePair = new KeyNamePair(rs.getInt(7), lineNo.toString());
-				line.add(LinePair);  																//  1-Line		
-				MProduct prod = new MProduct(Env.getCtx(), rs.getInt(2), null);
-				KeyNamePair ProdPair = new KeyNamePair(prod.getM_Product_ID(), prod.getName());
-				line.add(ProdPair);                           										//  2-Product	
-				MUOM uom = new MUOM(Env.getCtx(), rs.getInt(3), null);
-				KeyNamePair UOMPair = new KeyNamePair(uom.getC_UOM_ID(), uom.getUOMSymbol());
+				KeyNamePair LinePair = new KeyNamePair(rs.getInt(8), lineNo.toString());
+				line.add(LinePair);  																//  1-Line
+				String prodName = rs.getString(3);
+				if (prodName == null)
+					prodName = "";
+				KeyNamePair ProdPair = new KeyNamePair(rs.getInt(2), prodName);
+				line.add(ProdPair);                           										//  2-Product
+				String uomSymbol = rs.getString(5);
+				if (uomSymbol == null)
+					uomSymbol = "";
+				KeyNamePair UOMPair = new KeyNamePair(rs.getInt(4), uomSymbol);
 				line.add(UOMPair);                          					 					//  3-uom	
 				line.add(qty);																		//  4-qty
-				line.add(price);                           											//  7-price
+				line.add(price);                           											//  5-price
 			
 				data.add(line);
 			}
