@@ -22,10 +22,11 @@ import org.compiere.util.KeyNamePair;
 import org.compiere.util.Msg;
 import org.kjs.pola.model.X_C_ARProInv;
 import org.kjs.pola.model.X_C_ARProInvLine;
+import org.kjs.pola.validator.POLA_ProformaLineValidator;
 
 public class CreateFromProformaInv extends CreateFrom{
 	
-	protected WCreateFromWindow window = new WCreateFromWindow(this, getGridTab().getWindowNo());
+	protected WCreateFromWindow window;
 	protected int p_WindowNo = getGridTab().getWindowNo();
 
 	public CreateFromProformaInv(GridTab gridTab) {
@@ -92,6 +93,7 @@ public class CreateFromProformaInv extends CreateFrom{
 		PreparedStatement pstmt = null;
 		ResultSet rs = null;
 		try {
+			POLA_ProformaLineValidator.setSkipHeaderRecompute(true);
 			pstmt = DB.prepareStatement(sql.toString(), trxName);
 			for (int i = 0; i < selectedIds.size(); i++) {
 				pstmt.setInt(i + 1, selectedIds.get(i).intValue());
@@ -139,10 +141,13 @@ public class CreateFromProformaInv extends CreateFrom{
 			log.log(Level.SEVERE, sql.toString(), e);
 			return false;
 		} finally {
+			POLA_ProformaLineValidator.setSkipHeaderRecompute(false);
 			DB.close(rs, pstmt);
 			rs = null;
 			pstmt = null;
 		}
+
+		POLA_ProformaLineValidator.recomputeHeader(Env.getCtx(), C_ARProInv_ID, trxName, 0);
 
 		if (Inv.get_ValueAsInt("C_Order_ID") <= 0 && C_Order_ID > 0) {
 			Inv.set_CustomColumn("C_Order_ID", C_Order_ID);

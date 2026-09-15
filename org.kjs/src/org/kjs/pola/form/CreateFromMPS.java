@@ -175,6 +175,21 @@ public class CreateFromMPS extends CreateFrom
     
     public boolean save(final IMiniTable miniTable, final String trxName) {
         final int KJS_ProductionPlan_ID = (int)this.getGridTab().getValue("KJS_ProductionPlan_ID");
+        boolean anySelected = false;
+        for (int i = 0; i < miniTable.getRowCount(); ++i) {
+            if ((boolean) miniTable.getValueAt(i, 0)) {
+                anySelected = true;
+                break;
+            }
+        }
+        if (anySelected) {
+            final int phaseCount = DB.getSQLValueEx(trxName,
+                    "SELECT COUNT(*) FROM KJS_ProductPhaseLine ppl INNER JOIN KJS_ProductPhase pp ON ppl.KJS_ProductPhase_ID=pp.KJS_ProductPhase_ID WHERE pp.M_Product_ID=? AND ppl.BOMType=?",
+                    Integer.valueOf(this.M_Product_ID), this.BOMType);
+            if (phaseCount <= 0) {
+                throw new AdempiereUserError("No Product Phase");
+            }
+        }
         for (int i = 0; i < miniTable.getRowCount(); ++i) {
             if ((boolean) miniTable.getValueAt(i, 0)) {
                 final X_KJS_ProductionPlanLink ppl = new X_KJS_ProductionPlanLink(Env.getCtx(), 0, trxName);
@@ -185,34 +200,6 @@ public class CreateFromMPS extends CreateFrom
                 final BigDecimal Qty = (BigDecimal)miniTable.getValueAt(i, 3);
                 pp = (KeyNamePair)miniTable.getValueAt(i, 6);
                 final int C_DocType_ID = pp.getKey();
-                final String check = "SELECT COUNT(ppl.*) FROM KJS_ProductPhaseLine ppl,KJS_ProductPhase pp WHERE ppl.KJS_ProductPhase_ID=pp.KJS_ProductPhase_ID AND pp.M_Product_ID=? and ppl.BOMType=?";
-                PreparedStatement pstmtcheck = null;
-                ResultSet rscheck = null;
-                Label_0293: {
-                    try {
-                        pstmtcheck = (PreparedStatement)DB.prepareStatement(check.toString(), (String)null);
-                        pstmtcheck.setInt(1, this.M_Product_ID);
-                        pstmtcheck.setString(2, this.BOMType);
-                        rscheck = pstmtcheck.executeQuery();
-                        while (rscheck.next()) {
-                            if (rscheck.getInt(1) == 0) {
-                                throw new AdempiereUserError("No Product Phase");
-                            }
-                        }
-                    }
-                    catch (SQLException e) {
-                        this.log.log(Level.SEVERE, check.toString(), (Throwable)e);
-                        break Label_0293;
-                    }
-                    finally {
-                        DB.close(rscheck, (Statement)pstmtcheck);
-                        rscheck = null;
-                        pstmtcheck = null;
-                    }
-                    DB.close(rscheck, (Statement)pstmtcheck);
-                    rscheck = null;
-                    pstmtcheck = null;
-                }
                 ppl.setAD_Org_ID(this.AD_Org_ID);
                 ppl.setKJS_ProductionPlan_ID(KJS_ProductionPlan_ID);
                 if (C_DocType_ID == 1000094 || C_DocType_ID == 1000095 || C_DocType_ID == 1000096) {

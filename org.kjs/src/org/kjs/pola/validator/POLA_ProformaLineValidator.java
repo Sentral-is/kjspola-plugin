@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Properties;
 
 import org.adempiere.base.event.IEventTopics;
 import org.adempiere.exceptions.DBException;
@@ -18,6 +19,8 @@ import org.osgi.service.event.Event;
 
 public class POLA_ProformaLineValidator {
 
+	private static final ThreadLocal<Boolean> skipHeaderRecompute = new ThreadLocal<Boolean>();
+
 	// Sum LineNetAmt per tax for a proforma. When excludeLineId > 0 the given line is dropped
 	// (used on delete, which fires BEFORE the row is physically removed).
 	private static final String SQL_SUM_BY_TAX =
@@ -25,7 +28,17 @@ public class POLA_ProformaLineValidator {
 			+ "FROM C_ARProInvLine WHERE C_ARProInv_ID=? AND (?=0 OR C_ARProInvLine_ID<>?) "
 			+ "GROUP BY C_Tax_ID";
 
+	public static void setSkipHeaderRecompute(boolean skip) {
+		if (skip)
+			skipHeaderRecompute.set(Boolean.TRUE);
+		else
+			skipHeaderRecompute.remove();
+	}
+
 	public static String executeProformaEvent(Event event, PO po) {
+
+		if (Boolean.TRUE.equals(skipHeaderRecompute.get()))
+			return "";
 
 		String msgQuo = "";
 		X_C_ARProInvLine ProformaLine = (X_C_ARProInvLine) po;
@@ -43,12 +56,14 @@ public class POLA_ProformaLineValidator {
 
 	public static String ProformaBeforeSave(X_C_ARProInvLine ProformaLine) {
 		// PO_AFTER_NEW / PO_AFTER_CHANGE: the saved line is already persisted -> include all lines.
-		return recomputeHeader(ProformaLine, 0);
+		return recomputeHeader(ProformaLine.getCtx(), ProformaLine.getC_ARProInv_ID(),
+				ProformaLine.get_TrxName(), 0);
 	}
 
 	public static String ProformaBeforeDelete(X_C_ARProInvLine ProformaLine) {
 		// PO_BEFORE_DELETE: the line still exists -> exclude it from the recompute.
-		return recomputeHeader(ProformaLine, ProformaLine.getC_ARProInvLine_ID());
+		return recomputeHeader(ProformaLine.getCtx(), ProformaLine.getC_ARProInv_ID(),
+				ProformaLine.get_TrxName(), ProformaLine.getC_ARProInvLine_ID());
 	}
 
 	/**
@@ -60,17 +75,14 @@ public class POLA_ProformaLineValidator {
 	 * The header row is locked FOR UPDATE first, so two concurrent line edits on the same document
 	 * serialize their recompute instead of racing (last-writer-wins on stale totals).
 	 */
-	private static String recomputeHeader(X_C_ARProInvLine ProformaLine, int excludeLineId) {
-
-		int cARProInvId = ProformaLine.getC_ARProInv_ID();
-		String trxName = ProformaLine.get_TrxName();
+	public static String recomputeHeader(Properties ctx, int cARProInvId, String trxName, int excludeLineId) {
 
 		// Serialize concurrent recomputes on the same document.
 		DB.getSQLValueEx(trxName, "SELECT C_ARProInv_ID FROM C_ARProInv WHERE C_ARProInv_ID=? FOR UPDATE",
 				cARProInvId);
 
-		X_C_ARProInv proforma = new X_C_ARProInv(ProformaLine.getCtx(), cARProInvId, trxName);
-		MPriceList priceList = new MPriceList(ProformaLine.getCtx(), proforma.getM_PriceList_ID(), trxName);
+		X_C_ARProInv proforma = new X_C_ARProInv(ctx, cARProInvId, trxName);
+		MPriceList priceList = new MPriceList(ctx, proforma.getM_PriceList_ID(), trxName);
 		boolean taxIncluded = priceList.isTaxIncluded();
 		int precision = priceList.getPricePrecision();
 
@@ -93,7 +105,7 @@ public class POLA_ProformaLineValidator {
 				totalBase = totalBase.add(groupBase);
 				// C_Tax_ID 0/NULL = no tax on the line -> contributes to base with zero tax.
 				if (cTaxId > 0) {
-					MTax tax = new MTax(ProformaLine.getCtx(), cTaxId, trxName);
+					MTax tax = new MTax(ctx, cTaxId, trxName);
 					totalTax = totalTax.add(tax.calculateTax(groupBase, taxIncluded, precision));
 				}
 			}

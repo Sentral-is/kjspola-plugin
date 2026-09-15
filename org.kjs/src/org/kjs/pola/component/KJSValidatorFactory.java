@@ -33,7 +33,6 @@ public class KJSValidatorFactory extends AbstractEventHandler{
 	@Override
 	protected void doHandleEvent(Event event) {
 		
-		log.info("JEMBO EVENT MANAGER // INITIALIZED");
 		String msg = "";
 		
 		if (event.getTopic().equals(IEventTopics.AFTER_LOGIN)) {
