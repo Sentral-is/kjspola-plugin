@@ -500,7 +500,11 @@ public class MProductionExt extends MProduction
         if ("N".compareTo(bom) == 0) {
             return "Attempt to create product line for Non Bill Of Materials";
         }
-        final int materials = DB.getSQLValue(this.get_TrxName(), "SELECT count(M_Product_BOM_ID) FROM M_Product_BOM WHERE M_Product_ID = ?", M_Product_ID);
+        // Existence check reads PP_Product_BOMLine directly (like POLA_JOBPHASE_CreateProduction),
+        // NOT the M_Product_BOM view: the view hides lines under headers that are inactive or
+        // bomuse<>'A', which were valid in 6.2. Header filters are omitted deliberately, and
+        // M_Alternate_ID is not filtered here because this is a generic product-level check.
+        final int materials = DB.getSQLValue(this.get_TrxName(), "SELECT count(*) FROM PP_Product_BOMLine l JOIN PP_Product_BOM b ON b.PP_Product_BOM_ID = l.PP_Product_BOM_ID WHERE b.M_Product_ID = ? AND l.IsActive = 'Y'", M_Product_ID);
         if (materials == 0) {
             return "Attempt to create product line for Bill Of Materials with no BOM Products";
         }
