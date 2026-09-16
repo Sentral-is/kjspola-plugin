@@ -25,3 +25,12 @@ Product-phase existence is checked once per save, not once per selected row.
 ## Product Phase — Create JOB Phase (`CreateFromProductionPlan.java`)
 
 Asset and product dimensions load in two `IN (...)` queries for all selected rows. Removed per-row queries and the unscoped `WHERE Line=?` scan of `KJS_ProductionPlanLine`. Est. dates are set from the calculated duration.
+
+## AR Pro Forma — slow open / per-document load
+
+Callouts were registered on **every** `C_ARProInv` / `C_ARProInvLine` column. They are now only on `C_BPartner_ID`, `C_Order_ID`, `M_Product_ID`, `QtyEntered`, `PriceEntered`.
+
+Product pricing does not run when opening a line that already has a price. Partner/order callouts skip when the row is already filled. Order callout reads five columns instead of loading `MOrder`.
+
+**Run on the DB** (needed for line-tab load): [`sql/15_arproinv_load_indexes.sql`](../sql/15_arproinv_load_indexes.sql)
+

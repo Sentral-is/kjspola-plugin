@@ -11,7 +11,6 @@ import org.adempiere.base.IProductPricing;
 import org.compiere.model.GridField;
 import org.compiere.model.GridTab;
 import org.compiere.model.MPriceList;
-import org.compiere.model.MProduct;
 import org.compiere.util.DB;
 import org.compiere.util.Env;
 import org.kjs.pola.model.X_C_ARProInv;
@@ -21,8 +20,8 @@ public class CalloutARProInvLine implements IColumnCallout{
 	@Override
 	public String start(Properties ctx, int WindowNo, GridTab mTab, GridField mField, Object value, Object oldValue) {
 		if (mField.getColumnName().equals("M_Product_ID")) {
-			return this.ProductCallout(ctx, WindowNo, mTab, mField, value);
-		}else if ((mField.getColumnName().equals("QtyEntered "))) {	
+			return this.ProductCallout(ctx, WindowNo, mTab, mField, value, oldValue);
+		}else if ((mField.getColumnName().equals("QtyEntered"))) {	
 			return this.Qty(ctx, WindowNo, mTab, mField, value);
 		}else if ((mField.getColumnName().equals("PriceEntered"))) {	
 			return this.price(ctx, WindowNo, mTab, mField, value);
@@ -32,7 +31,7 @@ public class CalloutARProInvLine implements IColumnCallout{
 	}
 	
 	
-	public String ProductCallout(final Properties ctx, final int WindowNo, final GridTab mTab, final GridField mField,final Object value) {
+	public String ProductCallout(final Properties ctx, final int WindowNo, final GridTab mTab, final GridField mField,final Object value, final Object oldValue) {
 		if (value == null) {
 			
 			mTab.setValue("PriceList", Env.ZERO);
@@ -45,16 +44,33 @@ public class CalloutARProInvLine implements IColumnCallout{
 			return "";
 		}
 
+		// Opening/refreshing a line that already has a price — do not reprice.
+		if (oldValue == null) {
+			BigDecimal existingPrice = (BigDecimal)mTab.getValue("PriceEntered");
+			if (existingPrice != null && existingPrice.signum() != 0) {
+				return "";
+			}
+		} else if (oldValue.equals(value)) {
+			return "";
+		}
+
 		int M_Product_ID = (int) value;
 
-		MProduct prod = new MProduct(ctx, M_Product_ID, null);
-		mTab.setValue("C_UOM_ID", prod.getC_UOM_ID());
+		int C_UOM_ID = DB.getSQLValueEx(null, "SELECT C_UOM_ID FROM M_Product WHERE M_Product_ID=?", M_Product_ID);
+		if (C_UOM_ID > 0)
+			mTab.setValue("C_UOM_ID", Integer.valueOf(C_UOM_ID));
 		
-        int C_ARProInv_ID = (int) mTab.getValue("C_ARProInv_ID");
-        		
-        X_C_ARProInv proforma = new X_C_ARProInv(ctx, C_ARProInv_ID, null);
-        
-        int M_PriceList_ID = proforma.getM_PriceList_ID(); 
+        int M_PriceList_ID = Env.getContextAsInt(ctx, WindowNo, "M_PriceList_ID");
+        if (M_PriceList_ID <= 0) {
+        	int C_ARProInv_ID = 0;
+        	Object headerId = mTab.getValue("C_ARProInv_ID");
+        	if (headerId instanceof Number)
+        		C_ARProInv_ID = ((Number)headerId).intValue();
+        	if (C_ARProInv_ID > 0) {
+        		X_C_ARProInv proforma = new X_C_ARProInv(ctx, C_ARProInv_ID, null);
+        		M_PriceList_ID = proforma.getM_PriceList_ID();
+        	}
+        } 
         
         
 		mTab.setValue("C_Charge_ID", null);

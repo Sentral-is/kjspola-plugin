@@ -29,9 +29,16 @@ public class KJSCalloutFactory implements IColumnCalloutFactory {
 		}else if(tableName.equalsIgnoreCase("C_OrderLine")) {
 			return new IColumnCallout[] { (IColumnCallout) new CalloutOrderLine() };
 		}else if(tableName.equalsIgnoreCase("C_ARProInv")) {
-			return new IColumnCallout[] { (IColumnCallout) new CalloutARProInv() };
+			if ("C_BPartner_ID".equals(columnName) || "C_Order_ID".equals(columnName)) {
+				return new IColumnCallout[] { (IColumnCallout) new CalloutARProInv() };
+			}
+			return null;
 		}else if(tableName.equalsIgnoreCase("C_ARProInvLine")) {
-			return new IColumnCallout[] { (IColumnCallout) new CalloutARProInvLine()};
+			if ("M_Product_ID".equals(columnName) || "QtyEntered".equals(columnName)
+					|| "PriceEntered".equals(columnName)) {
+				return new IColumnCallout[] { (IColumnCallout) new CalloutARProInvLine()};
+			}
+			return null;
 		}
 		
 		return null;
