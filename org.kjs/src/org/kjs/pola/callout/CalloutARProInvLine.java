@@ -44,13 +44,10 @@ public class CalloutARProInvLine implements IColumnCallout{
 			return "";
 		}
 
-		// Opening/refreshing a line that already has a price — do not reprice.
-		if (oldValue == null) {
-			BigDecimal existingPrice = (BigDecimal)mTab.getValue("PriceEntered");
-			if (existingPrice != null && existingPrice.signum() != 0) {
-				return "";
-			}
-		} else if (oldValue.equals(value)) {
+		// Only skip when the product did not actually change (same product re-selected).
+		// Do NOT infer "loading" from oldValue==null: that also happens on a first-time edit,
+		// which would wrongly skip UOM/pricing setup and clearing the charge.
+		if (value.equals(oldValue)) {
 			return "";
 		}
 

@@ -34,3 +34,26 @@ Product pricing does not run when opening a line that already has a price. Partn
 
 **Run on the DB** (needed for line-tab load): [`sql/15_arproinv_load_indexes.sql`](../sql/15_arproinv_load_indexes.sql)
 
+## AR Pro Forma — callout skip guards corrected (follow-up to the above)
+
+The skip guards added above used `oldValue == null` to mean "the record is being
+loaded/opened, so don't re-run the callout." That assumption is wrong on two counts:
+
+1. Loading/navigating a record never fires these callouts to begin with —
+   `GridTab.setCurrentRow` only fires the callout for the **key** field, and these callouts
+   are on non-key fields (`C_BPartner_ID`, `C_Order_ID`, `M_Product_ID`). So the guards gave
+   no load-time benefit.
+2. `oldValue` is the field's *previous* value, so it is also `null` when a user fills a
+   previously-empty field for the **first time** — indistinguishable from a load. This
+   silently skipped legitimate auto-fills.
+
+Symptoms: selecting an order (after a date was entered, or after clearing/reselecting) did
+not copy partner/location/price list/currency/date; selecting a product on a line that
+already had a price did not set UOM/pricing or clear the charge.
+
+Fix: replaced each `oldValue == null && <sibling already filled>` guard with
+`if (value.equals(oldValue)) return "";` in `CalloutARProInv` (Order + Business Partner)
+and `CalloutARProInvLine` (Product). This skips only when the value did not actually change
+and never suppresses a real edit. The narrowed registrations, indexes, the `QtyEntered`
+typo fix, and the Bill-To location SQL are unchanged.
+

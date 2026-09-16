@@ -29,8 +29,9 @@ public class CalloutARProInv implements IColumnCallout{
 		if (value == null) {
 			return "";
 		}
-		// Existing row being loaded/refreshed already has a location — do not query again.
-		if (oldValue == null && intValue(mTab.getValue("C_BPartner_Location_ID")) > 0) {
+		// Only skip when the value did not actually change (e.g. same partner re-selected).
+		// Do NOT infer "loading" from oldValue==null: that also happens on a first-time edit.
+		if (value.equals(oldValue)) {
 			return "";
 		}
 
@@ -56,7 +57,9 @@ public class CalloutARProInv implements IColumnCallout{
 		if (value == null) {
 			return "";
 		}
-		if (oldValue == null && mTab.getValue("DateOrdered") != null) {
+		// Only skip when the value did not actually change (e.g. same order re-selected).
+		// Do NOT infer "loading" from oldValue==null: that also happens on a first-time edit.
+		if (value.equals(oldValue)) {
 			return "";
 		}
 
@@ -84,14 +87,6 @@ public class CalloutARProInv implements IColumnCallout{
 		}
 
 		return null;
-	}
-
-	private static int intValue(Object value) {
-		if (value instanceof Integer)
-			return ((Integer)value).intValue();
-		if (value instanceof Number)
-			return ((Number)value).intValue();
-		return 0;
 	}
 
 }
