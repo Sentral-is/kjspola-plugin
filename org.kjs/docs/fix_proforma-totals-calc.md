@@ -1,6 +1,6 @@
 # AR Pro Forma Invoice — header totals calculation follow-up
 
-Follow-up to the earlier header-totals fix in [`fix.md`](fix.md). That change fixed *where* the
+Follow-up to the earlier header-totals fix (commit `3fd449e`). That change fixed *where* the
 validator writes (added `WHERE C_ARProInv_ID=?`). This change fixes *how* it calculates.
 
 File: `org.kjs/src/org/kjs/pola/validator/POLA_ProformaLineValidator.java`
